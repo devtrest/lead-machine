@@ -17,7 +17,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { avatarUrl } from "@/lib/avatar";
+import { initialsFor } from "@/lib/avatar";
 
 type NavItem = { href: string; label: string; icon: React.ReactNode };
 
@@ -47,7 +47,7 @@ export function AdminShell({ email, fullName, children }: Props) {
     router.refresh();
   }
 
-  const avatarSrc = avatarUrl(email ?? fullName ?? "admin");
+  const initials = initialsFor(fullName ?? email);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--surface)] via-[#fafaf9] to-[#f4f0fe] text-[var(--ink-strong)]">
@@ -119,14 +119,9 @@ export function AdminShell({ email, fullName, children }: Props) {
                   onClick={() => setMenuOpen((v) => !v)}
                   className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-elev)] py-1 pl-1 pr-2.5 transition hover:bg-[var(--surface-sunken)]"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={avatarSrc}
-                    alt="Account"
-                    width={28}
-                    height={28}
-                    className="h-7 w-7 rounded-full bg-[var(--brand-50)]"
-                  />
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[var(--brand-700)] to-[var(--brand-500)] text-[10px] font-bold text-white">
+                    {initials}
+                  </span>
                   <ChevronDown className="h-3.5 w-3.5 text-[var(--ink-muted)]" />
                 </button>
                 <AnimatePresence>
@@ -204,7 +199,7 @@ function SidebarContent({
           </span>
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight text-[var(--ink-strong)]">
-              Nichely
+              Lead Machine
             </div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-700)]">
               Admin Console

@@ -7,7 +7,7 @@ import { HomeFooter } from "@/components/home/HomeFooter";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = {
-  title: "Pricing — Nichely",
+  title: "Pricing — Lead Machine",
   description:
     "Simple plans, real leads. Starter through Enterprise — pay for credits, not seats.",
 };
@@ -41,7 +41,7 @@ export default async function PricingPage() {
             <span className="brand-text-gradient">leads</span>.
           </>
         }
-        subtitle="Pay for lead credits, not per seat. Upgrade or downgrade anytime — no contracts, no hidden fees."
+        subtitle="One-time payment for lifetime access. Credits never expire. No subscriptions, no surprises."
       />
       <div className="mx-auto max-w-6xl px-5 md:px-8">
         <PricingSection signedIn={signedIn} />

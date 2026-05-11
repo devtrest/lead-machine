@@ -254,9 +254,9 @@ export function LeadsCrm() {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "")
         .slice(0, 60);
-      return `nichely-${slug}-${stamp}.${ext}`;
+      return `leadmachine-${slug}-${stamp}.${ext}`;
     }
-    return `nichely-leads-${stamp}.${ext}`;
+    return `leadmachine-leads-${stamp}.${ext}`;
   }
 
   function triggerDownload(blob: Blob, filename: string) {

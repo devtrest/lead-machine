@@ -32,11 +32,11 @@ export function planForPriceId(priceId: string): string | null {
   return null;
 }
 
-/** How many credits each plan grants on activation. */
+/** How many credits each lifetime plan grants on purchase. */
 export const PLAN_CREDIT_GRANT: Record<string, number> = {
-  starter: 25,
-  premium: 120,
-  pro: 400,
+  starter: 250,
+  premium: 1000,
+  pro: 5000,
   enterprise: 0,
 };
 

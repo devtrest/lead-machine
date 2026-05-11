@@ -17,7 +17,7 @@ type SendArgs = {
   html: string;
 };
 
-const FROM = process.env.MAIL_FROM ?? "Nichely <hello@nichely.app>";
+const FROM = process.env.MAIL_FROM ?? "Lead Machine <hello@leadmachine.app>";
 
 async function send({ to, subject, html }: SendArgs): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
@@ -59,12 +59,12 @@ export async function sendPlanActivatedEmail(args: {
       <h1 style="margin:0 0 16px;font-size:22px;color:#0c0a09">Your ${planLabel} plan is live 🎉</h1>
       <p style="margin:0 0 12px;color:#57534e">${greeting}</p>
       <p style="margin:0 0 12px;color:#57534e">
-        Payment received — your <strong>${planLabel}</strong> plan is now active on your Nichely account.
+        Payment received — your <strong>${planLabel}</strong> plan is now active on your Lead Machine account.
       </p>
       <p style="margin:0 0 12px;color:#57534e">
         We've added <strong>${args.credits} credits</strong> to your balance. Generate as many leads as you need.
       </p>
-      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? "https://nichely.app"}/user"
+      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? "https://leadmachine.app"}/user"
          style="display:inline-block;margin:16px 0 0;padding:12px 20px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:10px;font-weight:600">
         Open dashboard
       </a>
@@ -76,7 +76,7 @@ export async function sendPlanActivatedEmail(args: {
 
   await send({
     to: args.to,
-    subject: `${planLabel} plan activated · Nichely`,
+    subject: `${planLabel} plan activated · Lead Machine`,
     html,
   });
 }

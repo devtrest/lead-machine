@@ -45,11 +45,11 @@ export default async function UserLayout({
             Account suspended
           </h1>
           <p className="mt-2 text-sm text-[var(--ink-muted)]">
-            Your Nichely account is temporarily suspended. Please contact
+            Your Lead Machine account is temporarily suspended. Please contact
             support to restore access.
           </p>
           <a
-            href="mailto:support@nichely.app"
+            href="mailto:support@leadmachine.app"
             className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
           >
             Contact support

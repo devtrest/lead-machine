@@ -8,7 +8,7 @@ import { HomeFooter } from "@/components/home/HomeFooter";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = {
-  title: "How it works — Nichely",
+  title: "How it works — Lead Machine",
   description:
     "From niche keyword to a CRM-ready lead list in four steps. See the AI lead engine end to end.",
 };
@@ -43,7 +43,7 @@ export default async function HowItWorksPage() {
             steps.
           </>
         }
-        subtitle="Tell Nichely your niche and target city. Our AI handles discovery, contact enrichment, deduplication, and ranking — so you focus on outreach."
+        subtitle="Tell Lead Machine your niche and target city. Our AI handles discovery, contact enrichment, deduplication, and ranking — so you focus on outreach."
       />
       <HomeHowItWorks />
       <HomeFeatures />

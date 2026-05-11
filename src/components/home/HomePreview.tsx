@@ -27,7 +27,7 @@ export function HomePreview() {
             <p className="mt-3 text-sm text-[var(--ink-muted)] md:text-base">
               Filter by what matters — rating, contact data, niche cluster.
               Multi-select rows, export to CSV, deep-link by campaign. We
-              built Nichely for the team that has to hit the number this
+              built Lead Machine for the team that has to hit the number this
               quarter.
             </p>
             <ul className="mt-6 space-y-3 text-sm text-[var(--ink-strong)]">

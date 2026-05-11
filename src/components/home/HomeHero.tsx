@@ -56,7 +56,7 @@ export function HomeHero({
             in any <span className="brand-text-gradient">city</span>.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-[var(--ink-muted)] md:text-lg">
-            Tell Nichely your niche and target city. We surface verified
+            Tell Lead Machine your niche and target city. We surface verified
             businesses with phones, emails, and websites — deduped and
             CRM-ready in minutes.
           </p>
@@ -94,7 +94,7 @@ export function HomeHero({
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--warning-500)]/40" />
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--success-500)]/40" />
               <span className="ml-3 text-xs text-[var(--ink-subtle)]">
-                nichely.app/dashboard
+                leadmachine.app/dashboard
               </span>
             </div>
             <div className="grid gap-4 p-5 md:grid-cols-[0.95fr_1.05fr] md:p-7">

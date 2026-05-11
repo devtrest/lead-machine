@@ -15,9 +15,10 @@ import {
   X,
   Sparkle,
   ChevronDown,
+  CreditCard,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { avatarUrl } from "@/lib/avatar";
+import { initialsFor } from "@/lib/avatar";
 
 type NavItem = {
   href: string;
@@ -31,6 +32,7 @@ const navItems: NavItem[] = [
   { href: "/user/generate", label: "Generate", icon: <Sparkles className="h-4 w-4" /> },
   { href: "/user/leads", label: "Leads", icon: <Users className="h-4 w-4" /> },
   { href: "/user/campaigns", label: "Campaigns", icon: <Layers className="h-4 w-4" /> },
+  { href: "/user/billing", label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
   { href: "/user/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
   { href: "/admin", label: "Admin", icon: <Sparkle className="h-4 w-4" />, adminOnly: true },
 ];
@@ -58,7 +60,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
   }
 
   const visibleNav = navItems.filter((n) => !n.adminOnly || role === "admin");
-  const avatarSrc = avatarUrl(email ?? fullName ?? "anonymous");
+  const initials = initialsFor(fullName ?? email);
 
   return (
     <div className="app-shell min-h-screen text-[var(--ink-strong)]">
@@ -139,14 +141,9 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                   onClick={() => setMenuOpen((v) => !v)}
                   className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-elev)] py-1 pl-1 pr-2.5 transition hover:bg-[var(--surface-sunken)]"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={avatarSrc}
-                    alt="Account"
-                    width={28}
-                    height={28}
-                    className="h-7 w-7 rounded-full bg-[var(--brand-50)]"
-                  />
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[var(--brand-600)] to-[var(--sky-500)] text-[10px] font-bold text-white">
+                    {initials}
+                  </span>
                   <ChevronDown className="h-3.5 w-3.5 text-[var(--ink-muted)]" />
                 </button>
                 <AnimatePresence>
@@ -229,11 +226,10 @@ function SidebarContent({
     <>
       <div className="flex items-center justify-between gap-2 px-5 py-5">
         <Link href="/user" className="flex items-center gap-2.5">
-          <span className="brand-gradient flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)]">
-            N
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mark.svg" alt="" aria-hidden className="h-8 w-8" />
           <span className="text-sm font-semibold tracking-tight text-[var(--ink-strong)]">
-            Nichely
+            Lead Machine
           </span>
         </Link>
         {onNavClick ? (
@@ -289,7 +285,7 @@ function SidebarContent({
             </div>
           </div>
           <Link
-            href="/#plans"
+            href="/user/billing"
             className="rounded-lg bg-[var(--brand-600)] px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white transition hover:bg-[var(--brand-700)]"
           >
             Upgrade

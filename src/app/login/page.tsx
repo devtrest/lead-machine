@@ -17,11 +17,10 @@ export default function LoginPage() {
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-5 py-5 md:px-8">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="brand-gradient flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)]">
-            N
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mark.svg" alt="" aria-hidden className="h-8 w-8" />
           <span className="text-sm font-semibold tracking-tight text-[var(--ink-strong)]">
-            Nichely
+            Lead Machine
           </span>
         </Link>
         <Link
@@ -39,7 +38,7 @@ export default function LoginPage() {
             Welcome back
           </div>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--ink-strong)]">
-            Sign in to <span className="brand-text-gradient">Nichely</span>
+            Sign in to <span className="brand-text-gradient">Lead Machine</span>
           </h1>
           <p className="mt-2 text-sm text-[var(--ink-muted)]">
             Pick up where you left off. Generate leads, track campaigns, export

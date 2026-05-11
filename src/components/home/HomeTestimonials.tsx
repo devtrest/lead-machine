@@ -8,7 +8,7 @@ import { Quote, Star } from "lucide-react";
 const testimonials = [
   {
     quote:
-      "We replaced four tools with Nichely. Lead research that used to take a full day now takes 15 minutes — and the contact data is cleaner than what we were paying for.",
+      "We replaced four tools with Lead Machine. Lead research that used to take a full day now takes 15 minutes — and the contact data is cleaner than what we were paying for.",
     name: "Maya Lindberg",
     role: "Head of Growth",
     company: "OutreachLab",
@@ -44,7 +44,7 @@ const testimonials = [
   },
   {
     quote:
-      "The Excel export is the one thing every other tool gets wrong. Nichely puts everything in clean, well-named columns. I open it, sort, push to HubSpot, done.",
+      "The Excel export is the one thing every other tool gets wrong. Lead Machine puts everything in clean, well-named columns. I open it, sort, push to HubSpot, done.",
     name: "Lena Park",
     role: "RevOps Lead",
     company: "Fern & Co.",

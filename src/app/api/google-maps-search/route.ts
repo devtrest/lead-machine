@@ -4,6 +4,7 @@ import {
   type ProgressEvent,
 } from "@/lib/google-maps-scraper";
 import { enrichFromWebsite } from "@/lib/lead-enrichment";
+import { expandKeyword } from "@/lib/keyword-cluster";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -66,13 +67,25 @@ export async function POST(req: Request) {
   const ceiling = ceilingForPlan(plan);
   const limit = Math.min(requestedTarget, ceiling);
 
+  // Reserve `limit` credits up front (1 credit per requested lead). Anything
+  // unused (e.g. we asked for 50 but only found 32) gets refunded after the
+  // scrape completes. Enterprise is unmetered.
   if (plan !== "enterprise") {
-    const { data: consumed, error: rpcError } = await supabase.rpc(
-      "consume_search_credit"
+    const { data: reserved, error: rpcError } = await supabase.rpc(
+      "reserve_search_credits",
+      { amount: limit }
     );
-    if (rpcError) return jsonError(rpcError.message, 400);
-    if (!consumed) {
-      return jsonError("Credits depleted · upgrade or buy refill.", 402);
+    if (rpcError) {
+      const msg = /function .* does not exist/i.test(rpcError.message)
+        ? "Run supabase/credit_reservation.sql to enable per-lead billing."
+        : rpcError.message;
+      return jsonError(msg, 400);
+    }
+    if (!reserved) {
+      return jsonError(
+        `Not enough credits. You need ${limit} but have fewer. Top up on the Billing page.`,
+        402
+      );
     }
   }
 
@@ -110,14 +123,71 @@ export async function POST(req: Request) {
       };
 
       try {
-        const results = await scrapeGoogleMaps({
+        // First sweep with the user's keyword.
+        let results = await scrapeGoogleMaps({
           keyword,
           location,
           maxResults: limit,
           onProgress: (e) => send(e),
         });
 
+        // If we're short of the target, expand the niche into related
+        // keywords and sweep those too. Dedupe by title+placeUrl.
+        if (results.length < limit) {
+          const expanded = await expandKeyword(keyword, 6);
+          const seen = new Set(
+            results.map(
+              (r) => `${r.title.toLowerCase()}|${(r.placeUrl ?? "").toLowerCase()}`
+            )
+          );
+
+          for (const altKeyword of expanded) {
+            if (results.length >= limit) break;
+            const needed = limit - results.length;
+            const extra = await scrapeGoogleMaps({
+              keyword: altKeyword,
+              location,
+              maxResults: Math.min(needed * 2, limit),
+              onProgress: (e) => {
+                // Re-emit discovering events scaled to the cumulative count.
+                if (
+                  e.phase === "discovering" ||
+                  e.phase === "extracting" ||
+                  e.phase === "enriching"
+                ) {
+                  send({
+                    phase: e.phase,
+                    count: Math.min(limit, results.length + e.count),
+                    target: limit,
+                  });
+                }
+              },
+            });
+            for (const r of extra) {
+              const key = `${r.title.toLowerCase()}|${(r.placeUrl ?? "").toLowerCase()}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              results.push(r);
+              if (results.length >= limit) break;
+            }
+          }
+          results = results.slice(0, limit);
+        }
+
         send({ phase: "saving" });
+
+        // Refund unused credits — we reserved `limit` but only delivered
+        // `results.length`. Refund the difference.
+        if (plan !== "enterprise" && results.length < limit) {
+          const refund = limit - results.length;
+          await supabase
+            .rpc("refund_search_credits", { amount: refund })
+            .then(({ error: refundErr }) => {
+              if (refundErr) {
+                console.error("[lead-engine] refund failed", refundErr);
+              }
+            });
+        }
 
         if (results.length === 0) {
           await supabase
@@ -272,6 +342,16 @@ export async function POST(req: Request) {
           err instanceof Error
             ? err.message
             : "The lead engine couldn't complete this run. Try again.";
+        // Failed run → refund all reserved credits.
+        if (plan !== "enterprise") {
+          await supabase
+            .rpc("refund_search_credits", { amount: limit })
+            .then(({ error: refundErr }) => {
+              if (refundErr) {
+                console.error("[lead-engine] refund-on-fail failed", refundErr);
+              }
+            });
+        }
         await supabase
           .from("scan_runs")
           .update({

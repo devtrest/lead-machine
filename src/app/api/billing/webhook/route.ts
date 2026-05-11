@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 import {
   getStripe,
   isStripeConfigured,
-  planForPriceId,
   PLAN_CREDIT_GRANT,
 } from "@/lib/stripe";
 import { sendPlanActivatedEmail } from "@/lib/mailer";
@@ -51,19 +50,10 @@ export async function POST(req: Request) {
 
   try {
     switch (event.type) {
+      // Lifetime plans = one-time payment. checkout.session.completed is the
+      // only signal we need to grant credits + activate the plan.
       case "checkout.session.completed":
         await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
-        break;
-      case "customer.subscription.updated":
-      case "customer.subscription.created":
-        await handleSubscriptionChanged(
-          event.data.object as Stripe.Subscription
-        );
-        break;
-      case "customer.subscription.deleted":
-        await handleSubscriptionCancelled(
-          event.data.object as Stripe.Subscription
-        );
         break;
       default:
         // Ignore other events.
@@ -106,31 +96,6 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     plan,
     email: session.customer_details?.email ?? session.customer_email ?? null,
   });
-}
-
-async function handleSubscriptionChanged(sub: Stripe.Subscription) {
-  const userId = (sub.metadata?.user_id as string | undefined) ?? null;
-  if (!userId) return;
-
-  const item = sub.items?.data?.[0];
-  const priceId = item?.price?.id;
-  const plan = priceId ? planForPriceId(priceId) : null;
-  if (!plan) return;
-
-  // Only treat active/trialing subs as "live".
-  if (sub.status === "active" || sub.status === "trialing") {
-    await activatePlan({ userId, plan, email: null });
-  }
-}
-
-async function handleSubscriptionCancelled(sub: Stripe.Subscription) {
-  const userId = (sub.metadata?.user_id as string | undefined) ?? null;
-  if (!userId) return;
-  const supabase = adminClient();
-  await supabase
-    .from("profiles")
-    .update({ plan: "starter", updated_at: new Date().toISOString() })
-    .eq("id", userId);
 }
 
 async function activatePlan({

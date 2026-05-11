@@ -97,19 +97,31 @@ async function scrapeFeed(
 ): Promise<MapsPlace[]> {
   await page.waitForSelector('div[role="feed"]', { timeout: 30_000 });
 
+  // Aggressively scroll until we hit the target OR Google's "You've reached
+  // the end of the list" marker appears OR scrolling stops yielding new
+  // items for many iterations in a row.
   let lastCount = 0;
   let stable = 0;
-  for (let i = 0; i < 80; i++) {
-    const count: number = await page.evaluate(() => {
+  for (let i = 0; i < 200; i++) {
+    const { count, atEnd } = (await page.evaluate(() => {
       const feed = document.querySelector('div[role="feed"]');
-      return feed ? feed.querySelectorAll('div[role="article"]').length : 0;
-    });
+      if (!feed) return { count: 0, atEnd: false };
+      const articles = feed.querySelectorAll('div[role="article"]').length;
+      // Google appends this exact string when the list is exhausted.
+      const tail = feed.textContent ?? "";
+      const atEnd = /reached the end of the list/i.test(tail);
+      return { count: articles, atEnd };
+    })) as { count: number; atEnd: boolean };
+
     onProgress?.({ phase: "discovering", count, target });
 
     if (count >= target) break;
+    if (atEnd) break;
     if (count === lastCount) {
       stable += 1;
-      if (stable >= 5) break;
+      // 12 consecutive stable iterations ≈ 2.4s of "nothing new" — feed is
+      // exhausted even without the marker.
+      if (stable >= 12) break;
     } else {
       stable = 0;
     }
@@ -117,9 +129,9 @@ async function scrapeFeed(
 
     await page.evaluate(() => {
       const el = document.querySelector('div[role="feed"]');
-      if (el) el.scrollBy(0, 2400);
+      if (el) el.scrollBy(0, 2800);
     });
-    await new Promise((r) => setTimeout(r, 220));
+    await new Promise((r) => setTimeout(r, 200));
   }
 
   const raw: MapsPlace[] = await page.evaluate((max: number) => {

@@ -15,36 +15,41 @@ const tiers = [
   {
     id: "starter" as const,
     name: "Starter",
-    price: "$19",
-    cadence: "/seat · mo",
+    price: "$49",
+    cadence: "one-time · lifetime",
     blurb: "Solo founders validating their first niche.",
-    perks: ["25 lead credits / mo", "8 leads per campaign", "CSV export"],
+    perks: [
+      "250 lead credits (never expire)",
+      "1 credit per lead generated",
+      "CSV + Excel export",
+      "AI niche expansion",
+    ],
   },
   {
     id: "premium" as const,
     name: "Premium",
-    price: "$49",
-    cadence: "/seat · mo",
+    price: "$149",
+    cadence: "one-time · lifetime",
     blurb: "Growth teams running outbound week to week.",
     perks: [
-      "120 lead credits / mo",
-      "20 leads per campaign",
-      "AI niche expansion",
+      "1,000 lead credits (never expire)",
       "Email + phone enrichment",
+      "Priority extraction speed",
+      "Campaign deep-links",
     ],
     highlighted: true,
   },
   {
     id: "pro" as const,
     name: "Pro",
-    price: "$129",
-    cadence: "/seat · mo",
+    price: "$399",
+    cadence: "one-time · lifetime",
     blurb: "Agencies running lead-gen at scale.",
     perks: [
-      "400 lead credits / mo",
-      "35 leads per campaign",
-      "Priority extraction",
+      "5,000 lead credits (never expire)",
+      "Everything in Premium",
       "Webhooks (beta)",
+      "Priority support",
     ],
   },
   {
@@ -124,7 +129,7 @@ export function PricingSection({ signedIn }: Props) {
           Simple plans. Real <span className="brand-text-gradient">leads</span>.
         </h2>
         <p className="text-sm text-[var(--ink-muted)] md:text-base">
-          Pay for credits, not seats per scrape. Upgrade or downgrade anytime.
+          One-time payment. Credits never expire. No subscriptions, no surprises.
         </p>
       </div>
 

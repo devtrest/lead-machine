@@ -14,7 +14,7 @@ import {
   X,
   Check,
 } from "lucide-react";
-import { avatarUrl } from "@/lib/avatar";
+import { initialsFor } from "@/lib/avatar";
 
 type AdminUser = {
   id: string;
@@ -131,15 +131,9 @@ export function AdminUsersTable({ users }: { users: AdminUser[] }) {
                 >
                   <Td>
                     <div className="flex items-center gap-2.5">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={avatarUrl(row.email ?? row.id)}
-                        alt={row.email ?? "user"}
-                        width={32}
-                        height={32}
-                        loading="lazy"
-                        className="h-8 w-8 shrink-0 rounded-full bg-[var(--brand-50)]"
-                      />
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--brand-600)] to-[var(--sky-500)] text-[10px] font-bold text-white">
+                        {initialsFor(row.full_name ?? row.email)}
+                      </span>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 truncate text-sm font-medium text-[var(--ink-strong)]">
                           {row.full_name || row.email}

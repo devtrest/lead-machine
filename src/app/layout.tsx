@@ -16,9 +16,9 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Nichely — AI-generated leads for any niche, any city",
+  title: "Lead Machine — AI-generated leads for any niche, any city",
   description:
-    "Tell Nichely your niche and target city. Our AI surfaces verified leads with phones, emails, and websites — deduped and ready to contact.",
+    "Tell Lead Machine your niche and target city. Our AI surfaces verified leads with phones, emails, and websites — deduped and ready to contact.",
 };
 
 export default function RootLayout({

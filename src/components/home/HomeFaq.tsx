@@ -23,7 +23,7 @@ const faqs = [
   },
   {
     q: "Is this compliant?",
-    a: "Nichely surfaces publicly available business contact data. We don't sell personal/private records, and you control your data with full row-level isolation.",
+    a: "Lead Machine surfaces publicly available business contact data. We don't sell personal/private records, and you control your data with full row-level isolation.",
   },
 ];
 

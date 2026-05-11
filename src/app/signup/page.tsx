@@ -22,11 +22,10 @@ export default function SignupPage() {
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-5 py-5 md:px-8">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="brand-gradient flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)]">
-            N
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mark.svg" alt="" aria-hidden className="h-8 w-8" />
           <span className="text-sm font-semibold tracking-tight text-[var(--ink-strong)]">
-            Nichely
+            Lead Machine
           </span>
         </Link>
         <Link
@@ -48,7 +47,7 @@ export default function SignupPage() {
             Start <span className="brand-text-gradient">closing them.</span>
           </h1>
           <p className="mt-3 max-w-md text-sm text-[var(--ink-muted)]">
-            Tell Nichely your niche and city. We surface verified businesses
+            Tell Lead Machine your niche and city. We surface verified businesses
             with phones, emails, and websites — clean and CRM-ready.
           </p>
           <ul className="mt-6 space-y-3">
@@ -69,7 +68,7 @@ export default function SignupPage() {
         <div className="space-y-4">
           <div className="text-center md:hidden">
             <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
-              Create your <span className="brand-text-gradient">Nichely</span>{" "}
+              Create your <span className="brand-text-gradient">Lead Machine</span>{" "}
               account
             </h1>
             <p className="mt-1 text-sm text-[var(--ink-muted)]">

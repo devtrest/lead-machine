@@ -6,7 +6,7 @@ import { HomeFooter } from "@/components/home/HomeFooter";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = {
-  title: "FAQ — Nichely",
+  title: "FAQ — Lead Machine",
   description:
     "Common questions about lead freshness, AI niche expansion, exports, and compliance.",
 };
