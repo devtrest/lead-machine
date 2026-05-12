@@ -1,8 +1,9 @@
 # The worker is a separate Railway deployment — don't bundle it into Vercel.
-worker/
+/worker/
 
-# Local SQL migrations (run via Supabase SQL Editor, not deployed)
-supabase/
+# Root-level SQL migrations only (NOT src/lib/supabase — that's the client).
+# Leading slash anchors the match to the project root.
+/supabase/
 
 # Local files
 .env.local
