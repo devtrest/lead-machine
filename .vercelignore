@@ -1,0 +1,9 @@
+# The worker is a separate Railway deployment — don't bundle it into Vercel.
+worker/
+
+# Local SQL migrations (run via Supabase SQL Editor, not deployed)
+supabase/
+
+# Local files
+.env.local
+*.log

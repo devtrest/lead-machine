@@ -35,9 +35,7 @@ export async function POST(req: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return jsonError("Unauthorized", 401);
-  }
+  if (!user) return jsonError("Unauthorized", 401);
 
   const body = await req.json().catch(() => null);
   const keyword =
@@ -67,9 +65,7 @@ export async function POST(req: Request) {
   const ceiling = ceilingForPlan(plan);
   const limit = Math.min(requestedTarget, ceiling);
 
-  // Reserve `limit` credits up front (1 credit per requested lead). Anything
-  // unused (e.g. we asked for 50 but only found 32) gets refunded after the
-  // scrape completes. Enterprise is unmetered.
+  // Reserve `limit` credits up front (1 credit per requested lead).
   if (plan !== "enterprise") {
     const { data: reserved, error: rpcError } = await supabase.rpc(
       "reserve_search_credits",
@@ -109,6 +105,163 @@ export async function POST(req: Request) {
   const scanRunId = runRow.id as string;
   const userId = user.id;
 
+  // Route to the worker if WORKER_URL is set (production on Vercel + Railway);
+  // otherwise run the scrape in-process (local dev convenience).
+  const workerUrl = process.env.WORKER_URL?.trim();
+  const workerToken = process.env.WORKER_TOKEN?.trim();
+
+  if (workerUrl && workerToken) {
+    return proxyToWorker({
+      workerUrl,
+      workerToken,
+      scanRunId,
+      userId,
+      keyword,
+      location,
+      target: limit,
+      limit,
+      plan,
+      supabase,
+    });
+  }
+
+  return runEmbeddedScrape({
+    scanRunId,
+    userId,
+    keyword,
+    location,
+    limit,
+    plan,
+    supabase,
+  });
+}
+
+/**
+ * Proxy path — production. The Railway worker does the scraping and DB
+ * writes. We just forward the SSE stream to the browser and refund unused
+ * credits when the worker finishes.
+ */
+async function proxyToWorker(opts: {
+  workerUrl: string;
+  workerToken: string;
+  scanRunId: string;
+  userId: string;
+  keyword: string;
+  location: string;
+  target: number;
+  limit: number;
+  plan: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const { workerUrl, workerToken, scanRunId, limit, plan, supabase } = opts;
+
+  let workerRes: Response;
+  try {
+    workerRes = await fetch(`${workerUrl.replace(/\/$/, "")}/scrape`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        scanRunId,
+        userId: opts.userId,
+        keyword: opts.keyword,
+        location: opts.location,
+        target: opts.target,
+      }),
+    });
+  } catch (err) {
+    // Worker unreachable — refund and bail.
+    if (plan !== "enterprise") {
+      await supabase.rpc("refund_search_credits", { amount: limit });
+    }
+    await markRunFailed(supabase, scanRunId, "Lead engine unreachable");
+    return jsonError(
+      err instanceof Error ? err.message : "Worker unreachable",
+      502
+    );
+  }
+
+  if (!workerRes.ok || !workerRes.body) {
+    if (plan !== "enterprise") {
+      await supabase.rpc("refund_search_credits", { amount: limit });
+    }
+    const msg = await workerRes.text().catch(() => "Worker failed");
+    await markRunFailed(supabase, scanRunId, msg);
+    return jsonError(msg, 502);
+  }
+
+  const upstream = workerRes.body;
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          controller.enqueue(value);
+        }
+      } catch (err) {
+        console.error("[lead-engine] stream pump error", err);
+      } finally {
+        // Worker stream ended. Read final scan_run state and refund any
+        // unused credits (we reserved `limit` up front).
+        if (plan !== "enterprise") {
+          const { data: run } = await supabase
+            .from("scan_runs")
+            .select("result_count,status")
+            .eq("id", scanRunId)
+            .maybeSingle();
+
+          const delivered = run?.result_count ?? 0;
+          const status = run?.status ?? "running";
+
+          // If the run failed, refund everything; otherwise refund the diff.
+          const refund =
+            status === "failed" ? limit : Math.max(0, limit - delivered);
+          if (refund > 0) {
+            await supabase
+              .rpc("refund_search_credits", { amount: refund })
+              .then(({ error }) => {
+                if (error) {
+                  console.error("[lead-engine] refund failed", error);
+                }
+              });
+          }
+        }
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+/**
+ * Embedded path — local dev, where running a separate worker container is
+ * inconvenient. Does the scrape in the Next.js process, same as before the
+ * Vercel+Railway split.
+ */
+async function runEmbeddedScrape(opts: {
+  scanRunId: string;
+  userId: string;
+  keyword: string;
+  location: string;
+  limit: number;
+  plan: string;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+}) {
+  const { scanRunId, userId, keyword, location, limit, plan, supabase } = opts;
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -123,7 +276,6 @@ export async function POST(req: Request) {
       };
 
       try {
-        // First sweep with the user's keyword.
         let results = await scrapeGoogleMaps({
           keyword,
           location,
@@ -131,8 +283,6 @@ export async function POST(req: Request) {
           onProgress: (e) => send(e),
         });
 
-        // If we're short of the target, expand the niche into related
-        // keywords and sweep those too. Dedupe by title+placeUrl.
         if (results.length < limit) {
           const expanded = await expandKeyword(keyword, 6);
           const seen = new Set(
@@ -140,7 +290,6 @@ export async function POST(req: Request) {
               (r) => `${r.title.toLowerCase()}|${(r.placeUrl ?? "").toLowerCase()}`
             )
           );
-
           for (const altKeyword of expanded) {
             if (results.length >= limit) break;
             const needed = limit - results.length;
@@ -149,7 +298,6 @@ export async function POST(req: Request) {
               location,
               maxResults: Math.min(needed * 2, limit),
               onProgress: (e) => {
-                // Re-emit discovering events scaled to the cumulative count.
                 if (
                   e.phase === "discovering" ||
                   e.phase === "extracting" ||
@@ -176,12 +324,9 @@ export async function POST(req: Request) {
 
         send({ phase: "saving" });
 
-        // Refund unused credits — we reserved `limit` but only delivered
-        // `results.length`. Refund the difference.
         if (plan !== "enterprise" && results.length < limit) {
-          const refund = limit - results.length;
           await supabase
-            .rpc("refund_search_credits", { amount: refund })
+            .rpc("refund_search_credits", { amount: limit - results.length })
             .then(({ error: refundErr }) => {
               if (refundErr) {
                 console.error("[lead-engine] refund failed", refundErr);
@@ -255,8 +400,6 @@ export async function POST(req: Request) {
           }
         }
 
-        // Email harvesting: crawl each lead's website (and /contact, /about)
-        // for emails + extra phones, in parallel batches with progress events.
         const harvestable = (insertedLeads ?? [])
           .map((lead, idx) => ({ lead, idx }))
           .filter(({ lead }) => Boolean(lead.website_url));
@@ -342,25 +485,19 @@ export async function POST(req: Request) {
           err instanceof Error
             ? err.message
             : "The lead engine couldn't complete this run. Try again.";
-        // Failed run → refund all reserved credits.
         if (plan !== "enterprise") {
           await supabase
             .rpc("refund_search_credits", { amount: limit })
             .then(({ error: refundErr }) => {
               if (refundErr) {
-                console.error("[lead-engine] refund-on-fail failed", refundErr);
+                console.error(
+                  "[lead-engine] refund-on-fail failed",
+                  refundErr
+                );
               }
             });
         }
-        await supabase
-          .from("scan_runs")
-          .update({
-            status: "failed",
-            error: message,
-            finished_at: new Date().toISOString(),
-          })
-          .eq("id", scanRunId)
-          .eq("user_id", userId);
+        await markRunFailed(supabase, scanRunId, message);
         send({ phase: "error", message });
         controller.close();
       }
@@ -376,6 +513,21 @@ export async function POST(req: Request) {
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+async function markRunFailed(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  scanRunId: string,
+  message: string
+) {
+  await supabase
+    .from("scan_runs")
+    .update({
+      status: "failed",
+      error: message,
+      finished_at: new Date().toISOString(),
+    })
+    .eq("id", scanRunId);
 }
 
 function jsonError(message: string, status: number): Response {
