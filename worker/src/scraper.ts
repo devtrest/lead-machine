@@ -1,4 +1,18 @@
-import puppeteer, { Browser, Page } from "puppeteer";
+import type { Browser, Page } from "puppeteer";
+// Use puppeteer-extra with the stealth plugin to evade Google's headless
+// detection (hides navigator.webdriver, adds fake plugins, patches UA, etc).
+// Critical for cloud deploys where regular headless Chromium gets blocked.
+import puppeteerVanilla from "puppeteer";
+import puppeteerExtra from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+
+// puppeteer-extra wraps puppeteer; tell it which underlying impl to use.
+// (Avoids puppeteer-extra falling back to a different version internally.)
+const puppeteer = puppeteerExtra as unknown as {
+  use(plugin: unknown): void;
+  launch: typeof puppeteerVanilla.launch;
+};
+puppeteer.use(StealthPlugin());
 
 export type MapsPlace = {
   title: string;
@@ -35,8 +49,12 @@ function launchOptions(): Parameters<typeof puppeteer.launch>[0] {
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      // Help the stealth plugin look more like a real browser.
+      "--disable-blink-features=AutomationControlled",
+      "--lang=en-US,en",
     ],
     defaultViewport: { width: 1400, height: 900 },
+    ignoreDefaultArgs: ["--enable-automation"],
   };
 }
 
