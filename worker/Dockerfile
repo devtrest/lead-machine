@@ -1,7 +1,10 @@
 # Lead Machine — worker image. Pure Node now (no Puppeteer/Chromium); the
 # place-lookup pipeline is backed by the Google Places API instead of
 # headless browser scraping.
-FROM node:20-slim
+#
+# Node 22 (not 20): @supabase/supabase-js requires native WebSocket, which
+# only landed in Node 22. On Node 20 the realtime client throws at import.
+FROM node:22-slim
 
 WORKDIR /app
 
