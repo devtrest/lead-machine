@@ -5,16 +5,21 @@ FROM node:20-slim
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
+# Install ALL deps (including devDependencies — tsc/typescript live there
+# and we need them to build). NODE_ENV stays as default during build.
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm install --include=dev
 
+# Compile TypeScript
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+# Now drop dev deps to slim the runtime image
 RUN npm prune --omit=dev
+
+# Switch to production for the running container
+ENV NODE_ENV=production
 
 EXPOSE 8080
 CMD ["node", "dist/server.js"]
