@@ -74,6 +74,32 @@ function unobfuscate(text: string): string {
     .replace(/\s*[\[(]?\s*dot\s*[\])]?\s*/gi, ".");
 }
 
+// Cloudflare's "Email Address Obfuscation" rewrites every mailto: and visible
+// email on a page into <a class="__cf_email__" data-cfemail="HEX">[email&#160;protected]</a>.
+// The real address is XOR-encoded in data-cfemail. Without decoding this we
+// miss emails on every Cloudflare-fronted site.
+function decodeCfEmail(encoded: string): string | null {
+  if (!/^[0-9a-f]+$/i.test(encoded)) return null;
+  if (encoded.length < 4 || encoded.length % 2 !== 0) return null;
+  const key = parseInt(encoded.slice(0, 2), 16);
+  let decoded = "";
+  for (let i = 2; i < encoded.length; i += 2) {
+    decoded += String.fromCharCode(parseInt(encoded.slice(i, i + 2), 16) ^ key);
+  }
+  return decoded;
+}
+
+function extractCfEmails(html: string): string[] {
+  const emails: string[] = [];
+  const re = /data-cfemail\s*=\s*["']([0-9a-f]+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const decoded = decodeCfEmail(m[1]);
+    if (decoded && decoded.includes("@")) emails.push(decoded.toLowerCase());
+  }
+  return emails;
+}
+
 const CONTACT_PATHS = [
   "",
   "/contact",
@@ -118,9 +144,14 @@ export async function enrichFromWebsite(
         redirect: "follow",
         signal: controller.signal,
         headers: {
+          // Real browser UA. Earlier we sent "...LeadMachineBot/1.0..." and
+          // Wordfence / Cloudflare bot mode silently served us a stripped
+          // page (or 403). Most lead sites are WordPress, so this matters.
           "user-agent":
-            "Mozilla/5.0 (compatible; LeadMachineBot/1.0) Chrome/122.0",
-          accept: "text/html,application/xhtml+xml",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": "en-US,en;q=0.9",
         },
       });
       clearTimeout(timeoutId);
@@ -130,6 +161,10 @@ export async function enrichFromWebsite(
       const fromHrefs = extractFromHrefs(html);
       for (const e of fromHrefs.emails) emails.push(e.toLowerCase());
       for (const p of fromHrefs.phones) phones.push(p);
+
+      // Cloudflare-obfuscated emails (data-cfemail attrs)
+      const cfEmails = extractCfEmails(html);
+      for (const e of cfEmails) emails.push(e);
 
       const text = unobfuscate(stripMarkup(html));
       const foundEmails = text.match(EMAIL_RE) ?? [];
@@ -141,7 +176,11 @@ export async function enrichFromWebsite(
         if (cleaned.length >= 8 && cleaned.length <= 16) phones.push(cleaned);
       }
 
-      if (foundEmails.length > 0 || fromHrefs.emails.length > 0) {
+      if (
+        foundEmails.length > 0 ||
+        fromHrefs.emails.length > 0 ||
+        cfEmails.length > 0
+      ) {
         sourceUrls.push(target);
       }
 
