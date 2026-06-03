@@ -98,8 +98,9 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   │   ├── leads/                CRM table + drawer + filters + export
 │   │   │   ├── campaigns/            scan_runs history
 │   │   │   ├── billing/              lifetime credit packs (Stripe checkout)
-│   │   │   ├── email-campaigns/      outreach: list view + compose page,
-│   │   │   │                          sends via Resend with reply-to=user
+│   │   │   ├── outreach/             list + new + [id]: multi-step sequences
+│   │   │   │                          on autopilot. Replaces the prior one-
+│   │   │   │                          shot email-campaigns flow.
 │   │   │   ├── settings/             profile + plan
 │   │   │   └── layout.tsx            wraps in AppShell, gates suspended users
 │   │   ├── admin/                    admin console (AdminShell — distinct UI)
@@ -114,7 +115,12 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │       ├── scan/runs/            campaign list
 │   │       ├── billing/checkout/     Stripe checkout (payment mode, lifetime)
 │   │       ├── billing/webhook/      Stripe webhook → grants credits + sends email
-│   │       ├── email-campaigns/send/ POST → Resend per lead, writes email_sends
+│   │       ├── outreach/campaigns/   GET (list), POST (create draft); [id]
+│   │       │                          PATCH/DELETE; [id]/steps PUT (replace
+│   │       │                          whole sequence atomically); [id]/start
+│   │       │                          POST (activate + poke worker tick);
+│   │       │                          [id]/prospects POST (import by leadIds)
+│   │       ├── outreach/prospects/   [id] PATCH (mark replied/bounced) + DELETE
 │   │       ├── admin/credits/        legacy single-user credit grant
 │   │       ├── admin/users/          admin actions (credits +/-, suspend, delete)
 │   │       ├── enterprise/           enterprise interest form
@@ -135,8 +141,10 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   ├── leads/LeadsCrm.tsx        table-fixed CRM with sort, filter, drawer,
 │   │   │                              CSV + Excel export, campaign-scoped view
 │   │   ├── campaigns/CampaignsTable.tsx
-│   │   ├── email-campaigns/EmailComposer.tsx subject/template/body/attachments
-│   │   │                                     + recipient checkboxes + send
+│   │   ├── outreach/                 StatusBadge, NewCampaignForm,
+│   │   │                              CampaignDetail (wrapper), SequenceEditor
+│   │   │                              (multi-step builder), ProspectsManager
+│   │   │                              (list + AddProspectsPanel)
 │   │   ├── admin/AdminUsersTable.tsx per-row actions with confirmation modals
 │   │   └── billing/BillingPanel.tsx
 │   └── lib/
@@ -162,16 +170,22 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │       └── osm.ts, google-maps.ts    legacy, unused in current product flow
 ├── worker/                            deploys to Railway (Dockerfile root dir = /worker)
 │   ├── src/
-│   │   ├── server.ts                 Express + SSE /scrape, Bearer auth, heartbeat
+│   │   ├── server.ts                 Express + SSE /scrape, Bearer auth,
+│   │   │                              heartbeat, /outreach/tick endpoint,
+│   │   │                              and 15-min setInterval kicking the
+│   │   │                              outreach autopilot
 │   │   ├── scrape-job.ts             orchestrator: scrape → cluster-expand →
 │   │   │                              insert leads → harvest emails → mark complete
+│   │   ├── outreach-tick.ts          autopilot: fetch active campaigns, find
+│   │   │                              due prospects, render templates, send via
+│   │   │                              Resend, advance state, sweep completed
 │   │   ├── places-api.ts             Google Places API (New) Text Search client
 │   │   ├── scraper.ts                thin wrapper over places-api.ts emitting
 │   │   │                              the legacy ProgressEvent shape
 │   │   ├── enrichment.ts             same logic as src/lib/lead-enrichment.ts
 │   │   ├── keywords.ts               same as src/lib/keyword-cluster.ts
 │   │   └── db.ts                     Supabase service-role client
-│   ├── Dockerfile                    node:20-slim (no Chromium — Places API is HTTP)
+│   ├── Dockerfile                    node:22-slim (no Chromium — Places API is HTTP)
 │   ├── railway.json                  buildCommand + healthcheck /health
 │   └── package.json                  separate deps (just express + supabase-js)
 ├── supabase/                         SQL migrations (run in Supabase SQL Editor)
@@ -180,6 +194,9 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   ├── admin_user_actions.sql        adds `suspended` column + admin delete policy
 │   ├── credit_reservation.sql        reserve_search_credits / refund_search_credits
 │   ├── email_outreach.sql            email_sends table + RLS (idempotent)
+│   ├── outreach_campaigns.sql        outreach_campaigns + outreach_steps +
+│   │                                  outreach_prospects + extends email_sends
+│   │                                  with campaign_id/step_order (idempotent)
 │   ├── fix_rls_recursion.sql         older patch, may not be needed on fresh installs
 │   ├── promote_admin.sql             one-time: edit email + run to grant admin
 │   └── backfill_profiles.sql         one-time for users created before trigger
@@ -197,16 +214,18 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 - `/signup` — two-column sales pitch on left, form on right
 
 **User app** (`AppShell` — left sidebar with Dashboard / Generate / Leads /
-Campaigns / Billing / Email Campaigns / Settings / Admin (if admin)):
+Campaigns / Billing / Outreach / Settings / Admin (if admin)):
 - `/user` — dashboard
 - `/user/generate` — niche + location + count + SSE animated progress
 - `/user/leads` — CRM table; supports `?campaign={runId}` for campaign-scoped view
 - `/user/campaigns` — scan_runs history with "View leads" deep links
 - `/user/billing` — credit packs (Stripe checkout)
-- `/user/email-campaigns` — list of campaigns that have leads with emails
-- `/user/email-campaigns/[runId]` — compose page: subject + template + body +
-  attachments (≤3.5 MB total) + recipient checkboxes; sends via Resend with
-  reply-to set to the user's profile email
+- `/user/outreach` — list of outreach campaigns (multi-step sequences)
+- `/user/outreach/new` — pick name + source niche; redirects to detail
+- `/user/outreach/[id]` — detail/edit: rename, sequence editor (multi-step
+  with subject/body/delay_days/template picker), prospects manager (add from
+  source niche, mark replied/bounced, remove), Start/Pause/Delete actions.
+  Sends fire on the Railway worker's 15-min autopilot tick.
 - `/user/settings` — profile + plan info
 
 **Admin console** (`AdminShell` — distinct visual theme, own sidebar):
@@ -223,6 +242,7 @@ Run order in SQL editor:
 3. `supabase/admin_user_actions.sql`
 4. `supabase/credit_reservation.sql`
 5. `supabase/email_outreach.sql`
+6. `supabase/outreach_campaigns.sql`
 
 **Tables:**
 - `profiles` (id FK auth.users, email, full_name, role, plan, credits, suspended, created_at, updated_at)
@@ -230,7 +250,10 @@ Run order in SQL editor:
 - `scan_runs` (id, user_id, source, keyword, location, status, limit_count, result_count, started_at, finished_at, error)
 - `leads` (id, user_id, scan_run_id, source, name, category, address, rating, review_count, maps_url, website_url, dedupe_key, created_at)
 - `lead_contacts` (id, lead_id, phone, email, website_url, source_url, created_at)
-- `email_sends` (id, user_id, lead_id, scan_run_id, recipient_email, subject, body, status, error, provider_message_id, attachment_count, sent_at, created_at)
+- `email_sends` (id, user_id, lead_id, scan_run_id, **campaign_id**, **step_order**, recipient_email, subject, body, status, error, provider_message_id, attachment_count, sent_at, created_at)
+- `outreach_campaigns` (id, user_id, scan_run_id, name, status, created_at, started_at, finished_at) — status in draft/active/paused/completed
+- `outreach_steps` (id, campaign_id, step_order, delay_days, subject, body, created_at) — unique on (campaign_id, step_order); step 1 has delay_days=0
+- `outreach_prospects` (id, campaign_id, lead_id, email, status, current_step, next_send_at, last_sent_at, added_at) — unique on (campaign_id, lead_id); status in pending/in_progress/replied/bounced/completed/failed
 
 **Functions:**
 - `is_admin()` — used in RLS policies (SECURITY DEFINER, avoids RLS recursion)
@@ -356,7 +379,9 @@ is fast enough that 30 s is plenty.
   - `SUPABASE_SERVICE_ROLE_KEY` (the long JWT from Supabase → Settings → API)
   - `GOOGLE_MAPS_API_KEY` (Places API New, with Places API New enabled in
     Google Cloud Console for the project)
-- Optional: `MISTRAL_API_KEY` (AI keyword expansion)
+- For outreach autopilot: `RESEND_API_KEY` + `OUTREACH_FROM` (verified domain).
+  Without these the 15-min tick logs to stdout instead of sending.
+- Optional: `MISTRAL_API_KEY` (AI keyword expansion), `MAIL_FROM` (fallback)
 
 ### Supabase auth URL config
 - **Site URL**: the Vercel domain
@@ -441,18 +466,41 @@ is fast enough that 30 s is plenty.
   under Vercel's 4.5 MB request body limit. Templates are hardcoded in
   `src/lib/email-templates.ts` with `{{name}}` / `{{category}}` / `{{sender}}`
   placeholders; user-editable templates deferred.
+- **June 2026 — outreach autopilot (Phase 1+2).** Replaced the one-shot
+  email-campaigns compose with a full multi-step sequence builder at
+  `/user/outreach`. Each campaign has a name, a parent scan_run, a sequence
+  of steps (subject/body/delay_days), and a set of prospects (leads with
+  emails). The Railway worker runs a 15-min `setInterval` (`outreach-tick.ts`)
+  that picks due prospects, sends the next step via Resend, advances
+  `current_step`, and computes `next_send_at` from the next step's delay.
+  Bearer-auth'd `POST /outreach/tick` lets the Vercel `start` route poke the
+  worker so the first send fires within seconds. Concurrency safety: tick
+  bumps `next_send_at` 10 min into the future as a soft claim. Status
+  transitions per prospect: pending → in_progress → completed (or replied/
+  bounced/failed). Reply detection is manual for v1 — user clicks
+  CheckCircle2 to mark replied. Attachments per step deferred.
+  Picked Railway worker over Vercel Cron (Hobby tier only does daily) so
+  the autopilot stays on the same infra we already pay for.
 
 ## Open work / followups
 
-1. Consider decommissioning the Railway worker — Places API is fast enough
-   that the whole flow fits inside a Vercel function comfortably, and the
-   `/api/google-maps-search` proxy already runs the pipeline embedded when
-   `WORKER_URL` is unset.
-2. Real-time credit decrement animation in the topbar while scrape runs
+1. **Outreach P3** — Gmail OAuth + multi-sender rotation. Lets users connect
+   their own Gmail accounts via Google OAuth, sends via Gmail API instead of
+   Resend, rotates senders to respect Gmail's ~400-500/day per-account limit.
+   Needs a Google Cloud OAuth app + verification for >100 users.
+2. **Outreach P4** — automatic reply detection (extends Gmail scope to
+   `gmail.readonly` or Pub/Sub watch), open/click tracking, per-step analytics.
+3. **Outreach attachments per step** — currently deferred. Storing attachments
+   needs Supabase Storage + a per-step join table; on send the worker fetches
+   from Storage, base64-encodes, attaches to Resend payload.
+4. Decommission Railway worker is now LESS attractive — the outreach autopilot
+   tick needs to run continuously, and Vercel Cron Hobby is daily-only.
+   Either upgrade Vercel to Pro for 15-min crons (~$20/mo) or keep Railway.
+5. Real-time credit decrement animation in the topbar while scrape runs
    (currently it just refreshes on next page load).
-3. Wait-for-CI gate, automated migrations on deploy, and a staging environment
+6. Wait-for-CI gate, automated migrations on deploy, and a staging environment
    are unbuilt — production pushes go straight to `main`.
-4. Restrict the production `GOOGLE_MAPS_API_KEY` to a single API in Google
+7. Restrict the production `GOOGLE_MAPS_API_KEY` to a single API in Google
    Cloud Console (Places API New only) — currently allowed for any API on
    the project.
 

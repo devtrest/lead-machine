@@ -5,6 +5,7 @@ import express, {
 } from "express";
 import { runScrapeJob, type JobEvent } from "./scrape-job.js";
 import { supabase } from "./db.js";
+import { runOutreachTick } from "./outreach-tick.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -107,7 +108,38 @@ app.post("/scrape", requireAuth, async (req, res) => {
   }
 });
 
+// Outreach autopilot — manual trigger endpoint for testing + on-demand kicks.
+// Same Bearer auth as /scrape; lets the frontend force a tick after a user
+// clicks "Start Campaign" so the first send fires within seconds instead of
+// waiting for the next interval.
+app.post("/outreach/tick", requireAuth, async (_req, res) => {
+  try {
+    const result = await runOutreachTick();
+    res.json(result);
+  } catch (err) {
+    console.error("[/outreach/tick]", err);
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : "Tick failed" });
+  }
+});
+
 const PORT = Number(process.env.PORT) || 8080;
 app.listen(PORT, () => {
   console.log(`[lead-machine-worker] listening on :${PORT}`);
+
+  // Background autopilot — fires every 15 min while the worker is up.
+  // First tick after 30 s of warmup so the server is reachable when Railway
+  // probes /health.
+  const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+  setTimeout(() => {
+    runOutreachTick().catch((err) =>
+      console.error("[outreach-tick] initial run failed:", err)
+    );
+    setInterval(() => {
+      runOutreachTick().catch((err) =>
+        console.error("[outreach-tick] interval run failed:", err)
+      );
+    }, FIFTEEN_MIN_MS);
+  }, 30_000);
 });

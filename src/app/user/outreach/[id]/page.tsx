@@ -1,0 +1,160 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { StatusBadge } from "@/components/outreach/StatusBadge";
+import { CampaignDetail } from "@/components/outreach/CampaignDetail";
+
+export const dynamic = "force-dynamic";
+
+type Params = Promise<{ id: string }>;
+
+export default async function CampaignDetailPage({
+  params,
+}: {
+  params: Params;
+}) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: campaign } = await supabase
+    .from("outreach_campaigns")
+    .select(
+      "id,name,status,scan_run_id,created_at,started_at,finished_at,scan_runs(keyword,location)"
+    )
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!campaign) notFound();
+
+  const niche = Array.isArray(campaign.scan_runs)
+    ? campaign.scan_runs[0]
+    : campaign.scan_runs;
+
+  const [stepsRes, prospectsRes, leadsRes] = await Promise.all([
+    supabase
+      .from("outreach_steps")
+      .select("id,step_order,delay_days,subject,body")
+      .eq("campaign_id", id)
+      .order("step_order", { ascending: true }),
+    supabase
+      .from("outreach_prospects")
+      .select(
+        "id,lead_id,email,status,current_step,next_send_at,last_sent_at,leads(name,category)"
+      )
+      .eq("campaign_id", id)
+      .order("added_at", { ascending: true }),
+    // All leads in the source niche that have an email — so user can add
+    // more prospects from the same niche.
+    supabase
+      .from("leads")
+      .select("id,name,category,lead_contacts(email)")
+      .eq("user_id", user.id)
+      .eq("scan_run_id", campaign.scan_run_id)
+      .order("created_at", { ascending: true }),
+  ]);
+
+  const steps = (stepsRes.data ?? []).map((s) => ({
+    id: s.id as string,
+    step_order: s.step_order as number,
+    delay_days: s.delay_days as number,
+    subject: s.subject as string,
+    body: s.body as string,
+  }));
+
+  type ProspectRow = {
+    id: string;
+    lead_id: string;
+    email: string;
+    status: string;
+    current_step: number;
+    next_send_at: string | null;
+    last_sent_at: string | null;
+    leads:
+      | { name: string; category: string | null }
+      | { name: string; category: string | null }[]
+      | null;
+  };
+  const prospects = (prospectsRes.data ?? []).map((p) => {
+    const row = p as ProspectRow;
+    const leadObj = Array.isArray(row.leads) ? row.leads[0] ?? null : row.leads;
+    return {
+      id: row.id,
+      leadId: row.lead_id,
+      email: row.email,
+      status: row.status,
+      currentStep: row.current_step,
+      nextSendAt: row.next_send_at,
+      lastSentAt: row.last_sent_at,
+      leadName: leadObj?.name ?? "(unknown lead)",
+      leadCategory: leadObj?.category ?? null,
+    };
+  });
+
+  const existingLeadIds = new Set(prospects.map((p) => p.leadId));
+  type LeadRow = {
+    id: string;
+    name: string;
+    category: string | null;
+    lead_contacts: { email: string | null }[] | null;
+  };
+  const candidateLeads = ((leadsRes.data ?? []) as LeadRow[])
+    .filter((l) => !existingLeadIds.has(l.id))
+    .map((l) => {
+      const email = (l.lead_contacts ?? [])
+        .map((c) => c.email)
+        .find((e): e is string => Boolean(e && e.length > 0));
+      return email
+        ? {
+            id: l.id,
+            name: l.name,
+            category: l.category,
+            email: email.toLowerCase(),
+          }
+        : null;
+    })
+    .filter((l): l is NonNullable<typeof l> => Boolean(l));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Link
+            href="/user/outreach"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--ink-muted)] transition hover:text-[var(--brand-700)]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            All campaigns
+          </Link>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
+              {campaign.name}
+            </h1>
+            <StatusBadge status={campaign.status} />
+          </div>
+          {niche ? (
+            <p className="mt-1 text-sm text-[var(--ink-muted)]">
+              Source:{" "}
+              <span className="capitalize">{niche.keyword}</span> ·{" "}
+              {niche.location}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <CampaignDetail
+        campaignId={campaign.id}
+        initialName={campaign.name}
+        initialStatus={campaign.status}
+        steps={steps}
+        prospects={prospects}
+        candidateLeads={candidateLeads}
+      />
+    </div>
+  );
+}
