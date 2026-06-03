@@ -5,10 +5,13 @@ type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   hint?: string;
   error?: string;
   iconLeft?: React.ReactNode;
+  // iconRight is rendered interactive (no pointer-events-none) so consumers
+  // can pass a <button> — e.g. a show/hide password toggle.
+  iconRight?: React.ReactNode;
 };
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, hint, error, iconLeft, className = "", id, ...rest },
+  { label, hint, error, iconLeft, iconRight, className = "", id, ...rest },
   ref
 ) {
   const generatedId = React.useId();
@@ -36,9 +39,16 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
             error ? "border-[var(--danger-500)]" : "border-[var(--border)]"
           } bg-[var(--surface-elev)] ${
             iconLeft ? "pl-9" : "pl-3.5"
-          } pr-3.5 py-2.5 text-sm text-[var(--ink-strong)] placeholder:text-[var(--ink-subtle)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20 ${className}`}
+          } ${
+            iconRight ? "pr-9" : "pr-3.5"
+          } py-2.5 text-sm text-[var(--ink-strong)] placeholder:text-[var(--ink-subtle)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20 ${className}`}
           {...rest}
         />
+        {iconRight ? (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ink-subtle)]">
+            {iconRight}
+          </span>
+        ) : null}
       </div>
       {error ? (
         <p className="text-xs text-[var(--danger-700)]">{error}</p>

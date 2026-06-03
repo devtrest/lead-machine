@@ -3,7 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mail, Lock, User, AlertTriangle, Check, ArrowRight } from "lucide-react";
+import {
+  Mail,
+  Lock,
+  User,
+  AlertTriangle,
+  Check,
+  ArrowRight,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +22,7 @@ export function SignupForm() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -75,11 +85,26 @@ export function SignupForm() {
         />
         <Input
           label="Password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           autoComplete="new-password"
           minLength={8}
           required
           iconLeft={<Lock className="h-4 w-4" />}
+          iconRight={
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              className="rounded p-0.5 text-[var(--ink-subtle)] transition hover:text-[var(--ink-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-500)]/30"
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          }
           placeholder="Minimum 8 characters"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
