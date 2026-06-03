@@ -29,7 +29,7 @@ export default async function EmailCampaignsPage() {
 
   // Count leads-with-email per scan_run. One round-trip; bucketing in JS
   // keeps the SQL simple and works fine up to ~thousands of leads per user.
-  let emailCounts = new Map<string, number>();
+  const emailCounts = new Map<string, number>();
   if (runList.length > 0) {
     const runIds = runList.map((r) => r.id);
     const { data: leads } = await supabase
