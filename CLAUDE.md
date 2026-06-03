@@ -98,6 +98,8 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   │   ├── leads/                CRM table + drawer + filters + export
 │   │   │   ├── campaigns/            scan_runs history
 │   │   │   ├── billing/              lifetime credit packs (Stripe checkout)
+│   │   │   ├── email-campaigns/      outreach: list view + compose page,
+│   │   │   │                          sends via Resend with reply-to=user
 │   │   │   ├── settings/             profile + plan
 │   │   │   └── layout.tsx            wraps in AppShell, gates suspended users
 │   │   ├── admin/                    admin console (AdminShell — distinct UI)
@@ -112,6 +114,7 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │       ├── scan/runs/            campaign list
 │   │       ├── billing/checkout/     Stripe checkout (payment mode, lifetime)
 │   │       ├── billing/webhook/      Stripe webhook → grants credits + sends email
+│   │       ├── email-campaigns/send/ POST → Resend per lead, writes email_sends
 │   │       ├── admin/credits/        legacy single-user credit grant
 │   │       ├── admin/users/          admin actions (credits +/-, suspend, delete)
 │   │       ├── enterprise/           enterprise interest form
@@ -132,6 +135,8 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   ├── leads/LeadsCrm.tsx        table-fixed CRM with sort, filter, drawer,
 │   │   │                              CSV + Excel export, campaign-scoped view
 │   │   ├── campaigns/CampaignsTable.tsx
+│   │   ├── email-campaigns/EmailComposer.tsx subject/template/body/attachments
+│   │   │                                     + recipient checkboxes + send
 │   │   ├── admin/AdminUsersTable.tsx per-row actions with confirmation modals
 │   │   └── billing/BillingPanel.tsx
 │   └── lib/
@@ -139,6 +144,8 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │       ├── avatar.ts                 initialsFor() — app uses initials only
 │       ├── stripe.ts                 client + price-id map + credit grants
 │       ├── mailer.ts                 Resend-or-console mailer + plan-activated tmpl
+│       ├── email-templates.ts        outreach templates + {{name}}/{{category}}/
+│       │                              {{sender}} placeholder renderer
 │       ├── places-api.ts             Google Places API (New) Text Search client
 │       │                              (dev-mode mirror of worker/src/places-api.ts)
 │       ├── google-maps-scraper.ts    thin wrapper over places-api.ts that emits
@@ -172,6 +179,7 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   ├── add_scan_lead_tables.sql      scan_runs, leads, lead_contacts (idempotent)
 │   ├── admin_user_actions.sql        adds `suspended` column + admin delete policy
 │   ├── credit_reservation.sql        reserve_search_credits / refund_search_credits
+│   ├── email_outreach.sql            email_sends table + RLS (idempotent)
 │   ├── fix_rls_recursion.sql         older patch, may not be needed on fresh installs
 │   ├── promote_admin.sql             one-time: edit email + run to grant admin
 │   └── backfill_profiles.sql         one-time for users created before trigger
@@ -189,12 +197,16 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 - `/signup` — two-column sales pitch on left, form on right
 
 **User app** (`AppShell` — left sidebar with Dashboard / Generate / Leads /
-Campaigns / Billing / Settings / Admin (if admin)):
+Campaigns / Billing / Email Campaigns / Settings / Admin (if admin)):
 - `/user` — dashboard
 - `/user/generate` — niche + location + count + SSE animated progress
 - `/user/leads` — CRM table; supports `?campaign={runId}` for campaign-scoped view
 - `/user/campaigns` — scan_runs history with "View leads" deep links
 - `/user/billing` — credit packs (Stripe checkout)
+- `/user/email-campaigns` — list of campaigns that have leads with emails
+- `/user/email-campaigns/[runId]` — compose page: subject + template + body +
+  attachments (≤3.5 MB total) + recipient checkboxes; sends via Resend with
+  reply-to set to the user's profile email
 - `/user/settings` — profile + plan info
 
 **Admin console** (`AdminShell` — distinct visual theme, own sidebar):
@@ -210,6 +222,7 @@ Run order in SQL editor:
 2. `supabase/add_scan_lead_tables.sql`
 3. `supabase/admin_user_actions.sql`
 4. `supabase/credit_reservation.sql`
+5. `supabase/email_outreach.sql`
 
 **Tables:**
 - `profiles` (id FK auth.users, email, full_name, role, plan, credits, suspended, created_at, updated_at)
@@ -217,6 +230,7 @@ Run order in SQL editor:
 - `scan_runs` (id, user_id, source, keyword, location, status, limit_count, result_count, started_at, finished_at, error)
 - `leads` (id, user_id, scan_run_id, source, name, category, address, rating, review_count, maps_url, website_url, dedupe_key, created_at)
 - `lead_contacts` (id, lead_id, phone, email, website_url, source_url, created_at)
+- `email_sends` (id, user_id, lead_id, scan_run_id, recipient_email, subject, body, status, error, provider_message_id, attachment_count, sent_at, created_at)
 
 **Functions:**
 - `is_admin()` — used in RLS policies (SECURITY DEFINER, avoids RLS recursion)
@@ -417,6 +431,16 @@ is fast enough that 30 s is plenty.
   `ghcr.io/puppeteer/puppeteer` to plain `node:20-slim`; image size dropped
   ~10x and cold starts got faster. The legacy `google-maps-scraper.ts` file
   name was kept so the API route's import didn't have to change.
+- **June 2026 — email outreach feature.** New `/user/email-campaigns` section
+  with list view + compose page. Sends via Resend (`OUTREACH_FROM` env var,
+  falls back to `MAIL_FROM`; logs to console if no API key). Per-recipient
+  attempts logged to new `email_sends` table — used for the "already emailed"
+  badge on the recipient list. Reply-to is set to the user's profile email
+  so replies land in their inbox, not in the verified outreach domain.
+  Attachments base64-encoded client-side, capped at 3.5 MB total to stay
+  under Vercel's 4.5 MB request body limit. Templates are hardcoded in
+  `src/lib/email-templates.ts` with `{{name}}` / `{{category}}` / `{{sender}}`
+  placeholders; user-editable templates deferred.
 
 ## Open work / followups
 

@@ -16,6 +16,7 @@ import {
   Sparkle,
   ChevronDown,
   CreditCard,
+  Mail,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initialsFor } from "@/lib/avatar";
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
   { href: "/user/leads", label: "Leads", icon: <Users className="h-4 w-4" /> },
   { href: "/user/campaigns", label: "Campaigns", icon: <Layers className="h-4 w-4" /> },
   { href: "/user/billing", label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
+  { href: "/user/email-campaigns", label: "Email Campaigns", icon: <Mail className="h-4 w-4" /> },
   { href: "/user/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
   { href: "/admin", label: "Admin", icon: <Sparkle className="h-4 w-4" />, adminOnly: true },
 ];
