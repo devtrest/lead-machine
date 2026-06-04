@@ -24,7 +24,7 @@ export default async function CampaignDetailPage({
   const { data: campaign } = await supabase
     .from("outreach_campaigns")
     .select(
-      "id,name,status,scan_run_id,created_at,started_at,finished_at,scan_runs(keyword,location)"
+      "id,name,status,scan_run_id,created_at,started_at,finished_at,daily_limit,scan_runs(keyword,location)"
     )
     .eq("id", id)
     .eq("user_id", user.id)
@@ -120,6 +120,62 @@ export default async function CampaignDetailPage({
     })
     .filter((l): l is NonNullable<typeof l> => Boolean(l));
 
+  // ---- Per-campaign stats: prospect breakdown + send/open counts -----------
+  const todayMidnightUtc = new Date();
+  todayMidnightUtc.setUTCHours(0, 0, 0, 0);
+  const [sendsRes, sentTodayRes] = await Promise.all([
+    supabase
+      .from("email_sends")
+      .select("status,first_opened_at")
+      .eq("campaign_id", id),
+    supabase
+      .from("email_sends")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", id)
+      .eq("status", "sent")
+      .gte("sent_at", todayMidnightUtc.toISOString()),
+  ]);
+
+  let sendsAttempted = 0;
+  let sendsSent = 0;
+  let sendsFailed = 0;
+  let opens = 0;
+  for (const row of sendsRes.data ?? []) {
+    sendsAttempted += 1;
+    if (row.status === "sent") sendsSent += 1;
+    else if (row.status === "failed") sendsFailed += 1;
+    if (row.first_opened_at) opens += 1;
+  }
+
+  // Prospect breakdown
+  let pendingCount = 0;
+  let inProgressCount = 0;
+  let repliedCount = 0;
+  let bouncedCount = 0;
+  let completedCount = 0;
+  for (const p of prospects) {
+    if (p.status === "pending") pendingCount += 1;
+    else if (p.status === "in_progress") inProgressCount += 1;
+    else if (p.status === "replied") repliedCount += 1;
+    else if (p.status === "bounced") bouncedCount += 1;
+    else if (p.status === "completed") completedCount += 1;
+  }
+
+  const stats = {
+    totalProspects: prospects.length,
+    pending: pendingCount,
+    inProgress: inProgressCount,
+    replied: repliedCount,
+    bounced: bouncedCount,
+    completed: completedCount,
+    sendsSent,
+    sendsFailed,
+    sendsAttempted,
+    opens,
+    sentToday: sentTodayRes.count ?? 0,
+    dailyLimit: (campaign.daily_limit as number) ?? 50,
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -154,6 +210,7 @@ export default async function CampaignDetailPage({
         steps={steps}
         prospects={prospects}
         candidateLeads={candidateLeads}
+        stats={stats}
       />
     </div>
   );

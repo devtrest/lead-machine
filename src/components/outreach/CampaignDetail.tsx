@@ -14,6 +14,10 @@ import {
   type Prospect,
   type CandidateLead,
 } from "@/components/outreach/ProspectsManager";
+import {
+  CampaignStatsBar,
+  type CampaignStats,
+} from "@/components/outreach/CampaignStatsBar";
 
 export function CampaignDetail({
   campaignId,
@@ -22,6 +26,7 @@ export function CampaignDetail({
   steps,
   prospects,
   candidateLeads,
+  stats,
 }: {
   campaignId: string;
   initialName: string;
@@ -29,6 +34,7 @@ export function CampaignDetail({
   steps: SequenceStep[];
   prospects: Prospect[];
   candidateLeads: CandidateLead[];
+  stats: CampaignStats;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -184,6 +190,8 @@ export function CampaignDetail({
           </div>
         ) : null}
       </div>
+
+      <CampaignStatsBar stats={stats} />
 
       <SequenceEditor
         campaignId={campaignId}
