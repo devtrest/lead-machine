@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Mail, Send, Users, TrendingUp, Activity } from "lucide-react";
+import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { OutreachDashboard } from "@/components/outreach/OutreachDashboard";
 
@@ -150,28 +150,28 @@ export default async function OutreachListPage() {
     {
       label: "Active campaigns",
       value: activeCount,
-      icon: Activity,
+      iconKey: "activity" as const,
       accent: "var(--success-700)",
       bg: "var(--success-50)",
     },
     {
       label: "Sent today",
       value: sentToday ?? 0,
-      icon: Send,
+      iconKey: "send" as const,
       accent: "var(--brand-700)",
       bg: "var(--brand-50)",
     },
     {
       label: "Total prospects",
       value: totalProspects,
-      icon: Users,
+      iconKey: "users" as const,
       accent: "var(--ink-strong)",
       bg: "var(--surface-sunken)",
     },
     {
       label: "Reply rate",
       value: `${replyRate}%`,
-      icon: TrendingUp,
+      iconKey: "trending-up" as const,
       accent: "var(--warning-700)",
       bg: "var(--warning-50)",
     },
@@ -199,11 +199,7 @@ export default async function OutreachListPage() {
         </Link>
       </div>
 
-      <OutreachDashboard
-        heroStats={heroStats}
-        campaigns={campaigns}
-        emptyIcon={Mail}
-      />
+      <OutreachDashboard heroStats={heroStats} campaigns={campaigns} />
     </div>
   );
 }

@@ -2,13 +2,34 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Plus, type LucideIcon } from "lucide-react";
+import {
+  ArrowRight,
+  Plus,
+  Mail,
+  Send,
+  Users,
+  TrendingUp,
+  Activity,
+  type LucideIcon,
+} from "lucide-react";
 import { StatusBadge } from "@/components/outreach/StatusBadge";
+
+// String keys instead of function references so server components can pass
+// these props across the server→client boundary without serialization issues.
+export type IconKey = "activity" | "send" | "users" | "trending-up" | "mail";
+
+const ICON_MAP: Record<IconKey, LucideIcon> = {
+  activity: Activity,
+  send: Send,
+  users: Users,
+  "trending-up": TrendingUp,
+  mail: Mail,
+};
 
 type HeroStat = {
   label: string;
   value: number | string;
-  icon: LucideIcon;
+  iconKey: IconKey;
   accent: string;
   bg: string;
 };
@@ -30,12 +51,11 @@ export type CampaignSummary = {
 export function OutreachDashboard({
   heroStats,
   campaigns,
-  emptyIcon: EmptyIcon,
 }: {
   heroStats: HeroStat[];
   campaigns: CampaignSummary[];
-  emptyIcon: LucideIcon;
 }) {
+  const EmptyIcon = Mail;
   return (
     <div className="space-y-6">
       {/* Hero stats */}
@@ -49,7 +69,7 @@ export function OutreachDashboard({
         className="grid grid-cols-2 gap-3 sm:grid-cols-4"
       >
         {heroStats.map((stat) => {
-          const Icon = stat.icon;
+          const Icon = ICON_MAP[stat.iconKey];
           return (
             <motion.div
               key={stat.label}
