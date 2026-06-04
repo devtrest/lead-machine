@@ -1,18 +1,17 @@
 import Link from "next/link";
 import { ArrowLeft, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { NewCampaignForm } from "@/components/outreach/NewCampaignForm";
+import { CampaignWizard } from "@/components/outreach/CampaignWizard";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewOutreachCampaignPage() {
+export default async function NewCampaignPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Pull every completed scan_run with at least one emailable lead so the
-  // user only sees niches they can actually outreach from.
+  // Available prospect-list folders = completed scan_runs with leads.
   const { data: runs } = await supabase
     .from("scan_runs")
     .select("id,keyword,location,started_at,result_count,status")
@@ -22,9 +21,9 @@ export default async function NewOutreachCampaignPage() {
     .order("started_at", { ascending: false })
     .limit(100);
 
+  // Per-list emailable count.
   const runList = runs ?? [];
   const runIds = runList.map((r) => r.id);
-
   const emailCounts = new Map<string, number>();
   if (runIds.length > 0) {
     const { data: leads } = await supabase
@@ -45,17 +44,28 @@ export default async function NewOutreachCampaignPage() {
     }
   }
 
-  const eligible = runList
+  const prospectLists = runList
     .map((r) => ({
       id: r.id,
       keyword: r.keyword,
       location: r.location,
+      total: r.result_count,
       emailable: emailCounts.get(r.id) ?? 0,
     }))
     .filter((r) => r.emailable > 0);
 
+  // User's connected senders.
+  const { data: sendersRaw } = await supabase
+    .from("outreach_senders")
+    .select("id,email,display_name,daily_limit,sends_today,status")
+    .eq("user_id", user!.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: true });
+
+  const senders = sendersRaw ?? [];
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <Link
           href="/user/outreach"
@@ -67,21 +77,17 @@ export default async function NewOutreachCampaignPage() {
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
           New outreach campaign
         </h1>
-        <p className="mt-1 text-sm text-[var(--ink-muted)]">
-          Pick a name and the niche to pull leads from. You&apos;ll build the
-          email sequence and add prospects on the next screen.
-        </p>
       </div>
 
-      {eligible.length === 0 ? (
+      {prospectLists.length === 0 ? (
         <div className="surface-card p-10 text-center">
           <Mail className="mx-auto h-10 w-10 text-[var(--ink-subtle)]" />
           <h3 className="mt-3 text-base font-semibold text-[var(--ink-strong)]">
-            No niches with emails yet
+            No prospect lists with emails yet
           </h3>
           <p className="mt-1.5 text-sm text-[var(--ink-muted)]">
             Generate a campaign first so we have leads with email addresses to
-            reach out to.
+            outreach.
           </p>
           <Link
             href="/user/generate"
@@ -91,7 +97,7 @@ export default async function NewOutreachCampaignPage() {
           </Link>
         </div>
       ) : (
-        <NewCampaignForm eligible={eligible} />
+        <CampaignWizard prospectLists={prospectLists} senders={senders} />
       )}
     </div>
   );

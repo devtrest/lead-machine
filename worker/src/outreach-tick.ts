@@ -31,6 +31,17 @@ type Step = {
   body: string;
 };
 
+type Sender = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  app_password: string;
+  daily_limit: number;
+  sends_today: number;
+  last_reset_at: string;
+  status: string;
+};
+
 type ActiveCampaign = {
   id: string;
   user_id: string;
@@ -38,6 +49,7 @@ type ActiveCampaign = {
   steps: Step[];
   senderName: string;
   replyTo: string | null;
+  senders: Sender[];      // active senders assigned to this campaign
   sendWindowStart: string; // "09:00"
   sendWindowEnd: string;   // "17:00"
   sendDays: string[];      // ['mon','tue',...]
@@ -88,11 +100,11 @@ export async function runOutreachTick(): Promise<TickResult> {
 }
 
 async function tick(): Promise<TickResult> {
-  // 1. Fetch all active campaigns (with steps + schedule).
+  // 1. Fetch all active campaigns (with steps, schedule, and sender refs).
   const { data: campaignsRaw, error: campErr } = await supabase
     .from("outreach_campaigns")
     .select(
-      "id,user_id,name,send_window_start,send_window_end,send_days,timezone,outreach_steps(step_order,delay_days,subject,body)"
+      "id,user_id,name,send_window_start,send_window_end,send_days,timezone,outreach_steps(step_order,delay_days,subject,body),outreach_campaign_senders(sender_id)"
     )
     .eq("status", "active");
 
@@ -110,6 +122,7 @@ async function tick(): Promise<TickResult> {
     send_days: string[];
     timezone: string;
     outreach_steps: Step[];
+    outreach_campaign_senders: { sender_id: string }[];
   }>;
 
   console.log(
@@ -120,14 +133,20 @@ async function tick(): Promise<TickResult> {
     return { campaigns: 0, due: 0, sent: 0, failed: 0, skipped: 0 };
   }
 
-  // 2. Resolve sender profiles.
+  // 2. Resolve user profiles + all senders for these users.
   const userIds = Array.from(new Set(campaigns.map((c) => c.user_id)));
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id,full_name,email")
-    .in("id", userIds);
+  const [profilesRes, sendersRes] = await Promise.all([
+    supabase.from("profiles").select("id,full_name,email").in("id", userIds),
+    supabase
+      .from("outreach_senders")
+      .select(
+        "id,user_id,email,display_name,app_password,daily_limit,sends_today,last_reset_at,status"
+      )
+      .in("user_id", userIds)
+      .eq("status", "active"),
+  ]);
   const profileMap = new Map(
-    (profiles ?? []).map((p) => [
+    (profilesRes.data ?? []).map((p) => [
       p.id as string,
       {
         full_name: (p.full_name as string | null) ?? null,
@@ -135,8 +154,27 @@ async function tick(): Promise<TickResult> {
       },
     ])
   );
+  const sendersById = new Map<string, Sender>();
+  for (const s of sendersRes.data ?? []) {
+    // Roll over sends_today at midnight UTC. Tick will UPDATE the row when
+    // we actually use a sender below.
+    const lastReset = s.last_reset_at as string;
+    const today = new Date().toISOString().slice(0, 10);
+    const sendsToday = lastReset === today ? (s.sends_today as number) : 0;
+    sendersById.set(s.id as string, {
+      id: s.id as string,
+      email: s.email as string,
+      display_name: (s.display_name as string | null) ?? null,
+      app_password: s.app_password as string,
+      daily_limit: s.daily_limit as number,
+      sends_today: sendsToday,
+      last_reset_at: today,
+      status: s.status as string,
+    });
+  }
 
-  // 3. Build campaign map, filtering out those outside their send window.
+  // 3. Build campaign map, filtering out those outside their send window OR
+  //    those with no usable senders.
   const campaignMap = new Map<string, ActiveCampaign>();
   let skippedOutOfWindow = 0;
   for (const c of campaigns) {
@@ -147,6 +185,24 @@ async function tick(): Promise<TickResult> {
       .slice()
       .sort((a, b) => a.step_order - b.step_order);
 
+    const assignedSenders = (c.outreach_campaign_senders ?? [])
+      .map((rel) => sendersById.get(rel.sender_id))
+      .filter((s): s is Sender => Boolean(s));
+
+    // Fallback: if no senders are assigned to a campaign yet, allow the
+    // legacy env-var Gmail to keep working. New campaigns from the wizard
+    // will always have at least one sender assigned.
+    const hasEnvSender = Boolean(
+      process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
+    );
+    if (assignedSenders.length === 0 && !hasEnvSender) {
+      console.warn(
+        `[outreach-tick] campaign "${c.name}" has no senders assigned and no env fallback — skipping`
+      );
+      skippedOutOfWindow += 1;
+      continue;
+    }
+
     const active: ActiveCampaign = {
       id: c.id,
       user_id: c.user_id,
@@ -154,6 +210,7 @@ async function tick(): Promise<TickResult> {
       steps,
       senderName,
       replyTo: prof?.email ?? null,
+      senders: assignedSenders,
       sendWindowStart: c.send_window_start ?? "09:00",
       sendWindowEnd: c.send_window_end ?? "17:00",
       sendDays: c.send_days ?? ["mon", "tue", "wed", "thu", "fri"],
@@ -286,11 +343,34 @@ async function tick(): Promise<TickResult> {
       `[outreach-tick] sending step ${nextStepOrder} → ${p.email} (campaign "${campaign.name}")`
     );
 
+    // Pick the sender with the most daily-limit headroom. If none have any
+    // headroom, fall back to the env-var sender (legacy) or log if neither
+    // exists.
+    const pickedSender = pickSenderWithHeadroom(campaign.senders);
+    if (!pickedSender && campaign.senders.length > 0) {
+      console.warn(
+        `[outreach-tick] all senders for "${campaign.name}" at daily limit, deferring`
+      );
+      // Try again in 4 hours (might be past midnight UTC and limits reset).
+      await supabase
+        .from("outreach_prospects")
+        .update({
+          next_send_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+        })
+        .eq("id", p.id);
+      continue;
+    }
+
+    // Generate unique open token for this send (tracking pixel URL).
+    const openToken = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+    const trackedHtml = injectTrackingPixel(bodyToHtml(renderedBody), openToken);
+
     const sendOutcome = await sendEmail({
       to: p.email,
       subject: renderedSubject,
-      html: bodyToHtml(renderedBody),
+      html: trackedHtml,
       replyTo: campaign.replyTo,
+      sender: pickedSender,
     });
 
     if (sendOutcome.ok) {
@@ -329,7 +409,20 @@ async function tick(): Promise<TickResult> {
         provider_message_id: sendOutcome.id,
         attachment_count: 0,
         sent_at: new Date().toISOString(),
+        open_token: openToken,
       });
+
+      // Increment sender's sends_today counter (DB tracking — independent of
+      // the in-memory `pickedSender.sends_today` we updated for batch logic).
+      if (pickedSender) {
+        await supabase
+          .from("outreach_senders")
+          .update({
+            sends_today: pickedSender.sends_today,
+            last_reset_at: pickedSender.last_reset_at,
+          })
+          .eq("id", pickedSender.id);
+      }
     } else {
       failed += 1;
       const newRetryCount = p.retry_count + 1;
@@ -463,11 +556,23 @@ type SendArgs = {
   subject: string;
   html: string;
   replyTo: string | null;
+  sender: Sender | null;
 };
 
 async function sendEmail(args: SendArgs): Promise<SendOutcome> {
+  // Preferred path: a sender row from the DB (one of the user's connected
+  // Gmail accounts).
+  if (args.sender) {
+    const result = await sendViaGmailWith(args.sender, args);
+    if (result.ok) {
+      args.sender.sends_today += 1;
+    }
+    return result;
+  }
+  // Fallback: legacy env-var Gmail (still works for users who haven't
+  // migrated to the senders table).
   if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    return sendViaGmail(args);
+    return sendViaEnvGmail(args);
   }
   if (process.env.RESEND_API_KEY) {
     return sendViaResend(args);
@@ -477,26 +582,49 @@ async function sendEmail(args: SendArgs): Promise<SendOutcome> {
   return { ok: true, id: "console-log-" + Date.now() };
 }
 
-let gmailTransporter: Transporter | null = null;
-function getGmailTransporter(): Transporter {
-  if (gmailTransporter) return gmailTransporter;
-  gmailTransporter = nodemailer.createTransport({
+// Pick the active sender with the most remaining headroom today. Spreads
+// sends evenly across multiple connected accounts and never overflows the
+// per-account daily limit.
+function pickSenderWithHeadroom(senders: Sender[]): Sender | null {
+  let best: Sender | null = null;
+  let bestRemaining = -1;
+  for (const s of senders) {
+    const remaining = s.daily_limit - s.sends_today;
+    if (remaining > 0 && remaining > bestRemaining) {
+      best = s;
+      bestRemaining = remaining;
+    }
+  }
+  return best;
+}
+
+// Per-sender transporter cache so we only build one nodemailer connection
+// per (user, gmail-address) pair across the worker's lifetime.
+const transporterCache = new Map<string, Transporter>();
+function transporterFor(sender: Sender): Transporter {
+  let t = transporterCache.get(sender.id);
+  if (t) return t;
+  t = nodemailer.createTransport({
     host: "smtp.gmail.com",
     port: 465,
     secure: true,
     auth: {
-      user: process.env.GMAIL_USER!,
-      pass: process.env.GMAIL_APP_PASSWORD!.replace(/\s+/g, ""),
+      user: sender.email,
+      pass: sender.app_password.replace(/\s+/g, ""),
     },
   });
-  return gmailTransporter;
+  transporterCache.set(sender.id, t);
+  return t;
 }
 
-async function sendViaGmail(args: SendArgs): Promise<SendOutcome> {
-  const user = process.env.GMAIL_USER!;
-  const from = user.includes("<") ? user : `<${user}>`;
+async function sendViaGmailWith(
+  sender: Sender,
+  args: SendArgs
+): Promise<SendOutcome> {
+  const fromName = sender.display_name?.trim();
+  const from = fromName ? `${fromName} <${sender.email}>` : `<${sender.email}>`;
   try {
-    const info = await getGmailTransporter().sendMail({
+    const info = await transporterFor(sender).sendMail({
       from,
       to: args.to,
       subject: args.subject,
@@ -510,6 +638,53 @@ async function sendViaGmail(args: SendArgs): Promise<SendOutcome> {
       error: err instanceof Error ? err.message : "Gmail SMTP error",
     };
   }
+}
+
+// Legacy env-var Gmail (for users who haven't moved to per-user senders yet).
+let envGmailTransporter: Transporter | null = null;
+function getEnvGmailTransporter(): Transporter {
+  if (envGmailTransporter) return envGmailTransporter;
+  envGmailTransporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.GMAIL_USER!,
+      pass: process.env.GMAIL_APP_PASSWORD!.replace(/\s+/g, ""),
+    },
+  });
+  return envGmailTransporter;
+}
+
+async function sendViaEnvGmail(args: SendArgs): Promise<SendOutcome> {
+  const user = process.env.GMAIL_USER!;
+  const from = user.includes("<") ? user : `<${user}>`;
+  try {
+    const info = await getEnvGmailTransporter().sendMail({
+      from,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+    });
+    return { ok: true, id: info.messageId || `gmail-${Date.now()}` };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Gmail SMTP error",
+    };
+  }
+}
+
+// Inject a 1x1 tracking pixel at the end of the email body. When the
+// recipient's mail client renders the email, it fetches the pixel from our
+// /api/track/open/[token] endpoint which logs the open.
+function injectTrackingPixel(html: string, token: string): string {
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
+    "https://lead-machine-m9i9.vercel.app";
+  const pixel = `<img src="${appUrl}/api/track/open/${token}" width="1" height="1" style="display:none;border:0;" alt="" />`;
+  return html + pixel;
 }
 
 async function sendViaResend(args: SendArgs): Promise<SendOutcome> {
