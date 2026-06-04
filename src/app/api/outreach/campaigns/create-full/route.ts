@@ -34,6 +34,7 @@ export async function POST(req: Request) {
     scanRunIds?: string[];
     steps?: { subject?: string; body?: string; delay_days?: number }[];
     senderIds?: string[];
+    dailyLimit?: number;
     startNow?: boolean;
   };
 
@@ -41,6 +42,10 @@ export async function POST(req: Request) {
   const scanRunIds = Array.isArray(body.scanRunIds) ? body.scanRunIds : [];
   const steps = Array.isArray(body.steps) ? body.steps : [];
   const senderIds = Array.isArray(body.senderIds) ? body.senderIds : [];
+  const dailyLimit = Math.max(
+    1,
+    Math.min(500, Math.floor(Number(body.dailyLimit) || 50))
+  );
   const startNow = Boolean(body.startNow);
 
   // ---- Validate ----
@@ -116,6 +121,7 @@ export async function POST(req: Request) {
       scan_run_id: scanRunIds[0],
       name,
       status: "draft",
+      daily_limit: dailyLimit,
     })
     .select("id")
     .single();

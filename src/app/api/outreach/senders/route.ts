@@ -41,16 +41,11 @@ export async function POST(req: Request) {
     email?: string;
     appPassword?: string;
     displayName?: string;
-    dailyLimit?: number;
   };
 
   const email = body.email?.trim().toLowerCase();
   const appPassword = body.appPassword?.replace(/\s+/g, "");
   const displayName = body.displayName?.trim() || null;
-  const dailyLimit = Math.max(
-    1,
-    Math.min(500, Math.floor(Number(body.dailyLimit) || 100))
-  );
 
   if (!email || !appPassword) {
     return NextResponse.json(
@@ -71,13 +66,16 @@ export async function POST(req: Request) {
     );
   }
 
+  // daily_limit on the sender row is the Gmail hard ceiling (~500/day).
+  // It's a safety enforcement, not a user-tuned setting. Campaign-level pace
+  // is what the user picks when creating a campaign.
   const { error } = await supabase.from("outreach_senders").insert({
     user_id: user.id,
     email,
     display_name: displayName,
     provider: "gmail",
     app_password: appPassword,
-    daily_limit: dailyLimit,
+    daily_limit: 500,
     status: "active",
   });
 

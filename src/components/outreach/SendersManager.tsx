@@ -265,7 +265,6 @@ function AddSenderForm({
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [appPassword, setAppPassword] = useState("");
-  const [dailyLimit, setDailyLimit] = useState(100);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -280,7 +279,6 @@ function AddSenderForm({
         email,
         appPassword,
         displayName: displayName || undefined,
-        dailyLimit,
       }),
     });
     setSubmitting(false);
@@ -319,18 +317,7 @@ function AddSenderForm({
         onChange={(e) => setAppPassword(e.target.value)}
         hint="16 characters from myaccount.google.com/apppasswords. Spaces are ignored."
       />
-      <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto_auto]">
-        <Input
-          label="Daily send limit"
-          type="number"
-          min={1}
-          max={500}
-          value={dailyLimit}
-          onChange={(e) =>
-            setDailyLimit(Math.max(1, Math.min(500, Number(e.target.value) || 100)))
-          }
-          hint="Stay well under Gmail's ~500/day to avoid suspension."
-        />
+      <div className="flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
         </Button>
@@ -338,6 +325,10 @@ function AddSenderForm({
           Connect
         </Button>
       </div>
+      <p className="text-[11px] text-[var(--ink-subtle)]">
+        Daily send pace is configured per campaign, not per sender. Gmail&apos;s
+        ~500/day account ceiling is enforced automatically.
+      </p>
       {error ? (
         <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

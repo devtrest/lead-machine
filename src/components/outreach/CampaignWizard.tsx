@@ -75,6 +75,7 @@ export function CampaignWizard({
   const [selectedSenderIds, setSelectedSenderIds] = useState<Set<string>>(
     () => new Set(senders.length === 1 ? [senders[0].id] : [])
   );
+  const [dailyLimit, setDailyLimit] = useState(50);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,6 +134,7 @@ export function CampaignWizard({
           delay_days: i === 0 ? 0 : s.delay_days,
         })),
         senderIds: Array.from(selectedSenderIds),
+        dailyLimit,
         startNow,
       }),
     });
@@ -185,6 +187,8 @@ export function CampaignWizard({
               senders={senders}
               selectedSenderIds={selectedSenderIds}
               setSelectedSenderIds={setSelectedSenderIds}
+              dailyLimit={dailyLimit}
+              setDailyLimit={setDailyLimit}
               summary={{
                 name,
                 listsCount: selectedListIds.size,
@@ -577,11 +581,15 @@ function StepSendersAndStart({
   senders,
   selectedSenderIds,
   setSelectedSenderIds,
+  dailyLimit,
+  setDailyLimit,
   summary,
 }: {
   senders: WizardSender[];
   selectedSenderIds: Set<string>;
   setSelectedSenderIds: (s: Set<string>) => void;
+  dailyLimit: number;
+  setDailyLimit: (v: number) => void;
   summary: {
     name: string;
     listsCount: number;
@@ -596,8 +604,70 @@ function StepSendersAndStart({
     setSelectedSenderIds(next);
   }
 
+  // Suggest a pace based on prospect count: drip over ~10 days, clamped 5-150.
+  const suggested = Math.max(
+    5,
+    Math.min(150, Math.ceil(summary.prospectsCount / 10))
+  );
+
   return (
     <div className="space-y-4">
+      <div className="surface-card space-y-3 p-5">
+        <div>
+          <h2 className="text-base font-semibold text-[var(--ink-strong)]">
+            Daily send pace
+          </h2>
+          <p className="mt-1 text-xs text-[var(--ink-muted)]">
+            How many emails this campaign sends per day, total across all
+            steps + senders. Slower pace = better deliverability + lower spam
+            risk.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[160px] flex-1">
+            <Input
+              label="Emails per day"
+              type="number"
+              min={1}
+              max={500}
+              value={dailyLimit}
+              onChange={(e) =>
+                setDailyLimit(
+                  Math.max(1, Math.min(500, Number(e.target.value) || 50))
+                )
+              }
+              hint={`Suggested: ${suggested}/day (${summary.prospectsCount} prospects ÷ ~10 days).`}
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            {[25, 50, 100].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setDailyLimit(preset)}
+                className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
+                  dailyLimit === preset
+                    ? "border-[var(--brand-500)] bg-[var(--brand-50)] text-[var(--brand-700)]"
+                    : "border-[var(--border)] text-[var(--ink-muted)] hover:border-[var(--brand-300)]"
+                }`}
+              >
+                {preset}/day
+              </button>
+            ))}
+          </div>
+        </div>
+        {summary.prospectsCount > 0 ? (
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-sunken)]/40 px-3 py-2 text-[11px] text-[var(--ink-muted)]">
+            At {dailyLimit}/day this campaign will finish step 1 in approximately{" "}
+            <span className="font-semibold text-[var(--ink-strong)]">
+              {Math.ceil(summary.prospectsCount / dailyLimit)} day
+              {Math.ceil(summary.prospectsCount / dailyLimit) === 1 ? "" : "s"}
+            </span>
+            .
+          </div>
+        ) : null}
+      </div>
+
       <div className="surface-card space-y-3 p-5">
         <div>
           <h2 className="text-base font-semibold text-[var(--ink-strong)]">
@@ -605,7 +675,7 @@ function StepSendersAndStart({
           </h2>
           <p className="mt-1 text-xs text-[var(--ink-muted)]">
             The worker rotates across selected accounts to respect Gmail&apos;s
-            daily limit and keep your sender reputation healthy.
+            ~500/day per-account ceiling and keep sender reputation healthy.
           </p>
         </div>
 
@@ -668,7 +738,7 @@ function StepSendersAndStart({
         <h2 className="text-base font-semibold text-[var(--ink-strong)]">
           Review
         </h2>
-        <dl className="grid grid-cols-2 gap-3 text-sm">
+        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-xs text-[var(--ink-subtle)]">Name</dt>
             <dd className="font-medium text-[var(--ink-strong)]">
@@ -693,6 +763,12 @@ function StepSendersAndStart({
             <dt className="text-xs text-[var(--ink-subtle)]">Senders</dt>
             <dd className="font-medium text-[var(--ink-strong)]">
               {selectedSenderIds.size} selected
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--ink-subtle)]">Daily pace</dt>
+            <dd className="font-medium text-[var(--ink-strong)]">
+              {dailyLimit}/day
             </dd>
           </div>
         </dl>

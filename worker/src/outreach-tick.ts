@@ -54,6 +54,8 @@ type ActiveCampaign = {
   sendWindowEnd: string;   // "17:00"
   sendDays: string[];      // ['mon','tue',...]
   timezone: string;        // "America/New_York"
+  dailyLimit: number;      // total emails this campaign can send per UTC day
+  sentToday: number;       // already-sent count for today (loaded at tick start)
 };
 
 type Prospect = {
@@ -100,11 +102,11 @@ export async function runOutreachTick(): Promise<TickResult> {
 }
 
 async function tick(): Promise<TickResult> {
-  // 1. Fetch all active campaigns (with steps, schedule, and sender refs).
+  // 1. Fetch all active campaigns (with steps, schedule, sender refs, limit).
   const { data: campaignsRaw, error: campErr } = await supabase
     .from("outreach_campaigns")
     .select(
-      "id,user_id,name,send_window_start,send_window_end,send_days,timezone,outreach_steps(step_order,delay_days,subject,body),outreach_campaign_senders(sender_id)"
+      "id,user_id,name,send_window_start,send_window_end,send_days,timezone,daily_limit,outreach_steps(step_order,delay_days,subject,body),outreach_campaign_senders(sender_id)"
     )
     .eq("status", "active");
 
@@ -121,6 +123,7 @@ async function tick(): Promise<TickResult> {
     send_window_end: string;
     send_days: string[];
     timezone: string;
+    daily_limit: number;
     outreach_steps: Step[];
     outreach_campaign_senders: { sender_id: string }[];
   }>;
@@ -133,9 +136,12 @@ async function tick(): Promise<TickResult> {
     return { campaigns: 0, due: 0, sent: 0, failed: 0, skipped: 0 };
   }
 
-  // 2. Resolve user profiles + all senders for these users.
+  // 2. Resolve user profiles + active senders + today's sends per campaign.
   const userIds = Array.from(new Set(campaigns.map((c) => c.user_id)));
-  const [profilesRes, sendersRes] = await Promise.all([
+  const campaignIdsAll = campaigns.map((c) => c.id);
+  const todayMidnightUtc = new Date();
+  todayMidnightUtc.setUTCHours(0, 0, 0, 0);
+  const [profilesRes, sendersRes, todaySendsRes] = await Promise.all([
     supabase.from("profiles").select("id,full_name,email").in("id", userIds),
     supabase
       .from("outreach_senders")
@@ -144,7 +150,20 @@ async function tick(): Promise<TickResult> {
       )
       .in("user_id", userIds)
       .eq("status", "active"),
+    supabase
+      .from("email_sends")
+      .select("campaign_id")
+      .in("campaign_id", campaignIdsAll)
+      .eq("status", "sent")
+      .gte("sent_at", todayMidnightUtc.toISOString()),
   ]);
+
+  // Bucket today's sends by campaign so we can enforce daily_limit.
+  const sentTodayByCampaign = new Map<string, number>();
+  for (const row of todaySendsRes.data ?? []) {
+    const cid = row.campaign_id as string;
+    sentTodayByCampaign.set(cid, (sentTodayByCampaign.get(cid) ?? 0) + 1);
+  }
   const profileMap = new Map(
     (profilesRes.data ?? []).map((p) => [
       p.id as string,
@@ -215,11 +234,20 @@ async function tick(): Promise<TickResult> {
       sendWindowEnd: c.send_window_end ?? "17:00",
       sendDays: c.send_days ?? ["mon", "tue", "wed", "thu", "fri"],
       timezone: c.timezone ?? "UTC",
+      dailyLimit: c.daily_limit ?? 50,
+      sentToday: sentTodayByCampaign.get(c.id) ?? 0,
     };
 
     if (!isWithinSendWindow(active)) {
       console.log(
         `[outreach-tick] campaign "${active.name}" out of window (${active.sendWindowStart}-${active.sendWindowEnd} ${active.timezone}), skipping`
+      );
+      skippedOutOfWindow += 1;
+      continue;
+    }
+    if (active.sentToday >= active.dailyLimit) {
+      console.log(
+        `[outreach-tick] campaign "${active.name}" hit daily limit (${active.sentToday}/${active.dailyLimit}), deferring to tomorrow`
       );
       skippedOutOfWindow += 1;
       continue;
@@ -305,6 +333,20 @@ async function tick(): Promise<TickResult> {
     const campaign = campaignMap.get(p.campaign_id);
     if (!campaign) continue;
 
+    // Stop sending this campaign if today's quota is exhausted. Defer the
+    // remaining prospects to tomorrow midnight UTC so they get a fresh
+    // budget on the next tick after rollover.
+    if (campaign.sentToday >= campaign.dailyLimit) {
+      const tomorrow = new Date();
+      tomorrow.setUTCHours(0, 0, 0, 0);
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      await supabase
+        .from("outreach_prospects")
+        .update({ next_send_at: tomorrow.toISOString() })
+        .eq("id", p.id);
+      continue;
+    }
+
     const nextStepOrder = p.current_step + 1;
     const nextStep = campaign.steps.find((s) => s.step_order === nextStepOrder);
 
@@ -375,6 +417,7 @@ async function tick(): Promise<TickResult> {
 
     if (sendOutcome.ok) {
       sent += 1;
+      campaign.sentToday += 1; // local counter so subsequent loop iterations see the new total
       const stepAfter = campaign.steps.find(
         (s) => s.step_order === nextStepOrder + 1
       );
