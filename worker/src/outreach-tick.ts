@@ -1,27 +1,25 @@
 // Outreach autopilot — fires on a 15-min interval from server.ts.
 //
-// For every active campaign, finds prospects whose next step is due
-// (next_send_at <= now, or null = send immediately), sends the next
-// step, advances prospect state, and logs to email_sends.
+// For every ACTIVE campaign:
+//   1. Check the campaign's send window (timezone + days + hours).
+//      Skip if out-of-window so we don't ping leads at 3am.
+//   2. Find prospects whose next step is due (next_send_at <= now).
+//   3. For each, render and send via Gmail SMTP (or Resend) with a
+//      random 30-90s wait between sends — looks human to Gmail, dodges
+//      spam-rate-limit heuristics.
+//   4. Advance prospect state (current_step++, set next_send_at to
+//      now + next step's delay_days).
+//   5. On send failure: bump retry_count; after 3 attempts flip the
+//      prospect to 'bounced' with the error stored in bounce_reason.
 //
 // Sender strategy (first-configured wins):
 //   1. Gmail SMTP via nodemailer (GMAIL_USER + GMAIL_APP_PASSWORD)
-//      — preferred when the user doesn't have a verified sending domain;
-//        emails come from their Gmail address, replies land naturally.
-//      — Google caps at ~500 sends/day per account.
 //   2. Resend HTTP API (RESEND_API_KEY + OUTREACH_FROM)
-//      — requires a verified domain; only used when Gmail isn't configured.
-//   3. console.log fallback — UI still works, no real send.
+//   3. console.log fallback
 //
-// Status transitions per prospect:
-//   pending  → in_progress (after first send)
-//   in_progress → completed (when last step sent)
-//   any  → replied / bounced / failed (terminal; tick skips)
-//
-// Concurrency safety: we "claim" the batch by bumping next_send_at
-// 10 min into the future before sending. If a tick takes longer than
-// 10 min (shouldn't happen at small scale), a second tick could grab
-// the same row — accept that for v1; revisit when volume grows.
+// Concurrency safety: we "claim" each batch by bumping next_send_at
+// 10 min into the future before sending. Coupled with the in-process
+// `running` lock, this prevents double-send under load.
 
 import nodemailer, { type Transporter } from "nodemailer";
 import { supabase } from "./db.js";
@@ -40,6 +38,10 @@ type ActiveCampaign = {
   steps: Step[];
   senderName: string;
   replyTo: string | null;
+  sendWindowStart: string; // "09:00"
+  sendWindowEnd: string;   // "17:00"
+  sendDays: string[];      // ['mon','tue',...]
+  timezone: string;        // "America/New_York"
 };
 
 type Prospect = {
@@ -48,6 +50,7 @@ type Prospect = {
   lead_id: string;
   email: string;
   current_step: number;
+  retry_count: number;
   lead: { name: string; category: string | null } | null;
 };
 
@@ -56,49 +59,68 @@ export type TickResult = {
   due: number;
   sent: number;
   failed: number;
+  skipped: number; // out-of-window
 };
+
+const MAX_RETRIES = 3;
+const MIN_INTER_SEND_MS = 30_000;
+const MAX_INTER_SEND_MS = 90_000;
+const CLAIM_WINDOW_MS = 10 * 60 * 1000;
 
 let running = false;
 
 export async function runOutreachTick(): Promise<TickResult> {
   if (running) {
     console.log("[outreach-tick] previous tick still running, skipping");
-    return { campaigns: 0, due: 0, sent: 0, failed: 0 };
+    return { campaigns: 0, due: 0, sent: 0, failed: 0, skipped: 0 };
   }
   running = true;
+  const t0 = Date.now();
   try {
-    return await tick();
+    const result = await tick();
+    console.log(
+      `[outreach-tick] tick done in ${Date.now() - t0}ms — campaigns:${result.campaigns} due:${result.due} sent:${result.sent} failed:${result.failed} skipped:${result.skipped}`
+    );
+    return result;
   } finally {
     running = false;
   }
 }
 
 async function tick(): Promise<TickResult> {
-  // 1. Fetch all active campaigns + steps in one shot.
+  // 1. Fetch all active campaigns (with steps + schedule).
   const { data: campaignsRaw, error: campErr } = await supabase
     .from("outreach_campaigns")
     .select(
-      "id,user_id,name,outreach_steps(step_order,delay_days,subject,body)"
+      "id,user_id,name,send_window_start,send_window_end,send_days,timezone,outreach_steps(step_order,delay_days,subject,body)"
     )
     .eq("status", "active");
 
   if (campErr) {
     console.error("[outreach-tick] fetch campaigns failed:", campErr);
-    return { campaigns: 0, due: 0, sent: 0, failed: 0 };
+    return { campaigns: 0, due: 0, sent: 0, failed: 0, skipped: 0 };
   }
 
   const campaigns = (campaignsRaw ?? []) as Array<{
     id: string;
     user_id: string;
     name: string;
+    send_window_start: string;
+    send_window_end: string;
+    send_days: string[];
+    timezone: string;
     outreach_steps: Step[];
   }>;
 
+  console.log(
+    `[outreach-tick] found ${campaigns.length} active campaign(s)`
+  );
+
   if (campaigns.length === 0) {
-    return { campaigns: 0, due: 0, sent: 0, failed: 0 };
+    return { campaigns: 0, due: 0, sent: 0, failed: 0, skipped: 0 };
   }
 
-  // 2. Resolve sender profile per campaign (one batched query).
+  // 2. Resolve sender profiles.
   const userIds = Array.from(new Set(campaigns.map((c) => c.user_id)));
   const { data: profiles } = await supabase
     .from("profiles")
@@ -114,7 +136,9 @@ async function tick(): Promise<TickResult> {
     ])
   );
 
+  // 3. Build campaign map, filtering out those outside their send window.
   const campaignMap = new Map<string, ActiveCampaign>();
+  let skippedOutOfWindow = 0;
   for (const c of campaigns) {
     const prof = profileMap.get(c.user_id);
     const senderName =
@@ -122,32 +146,62 @@ async function tick(): Promise<TickResult> {
     const steps = (c.outreach_steps ?? [])
       .slice()
       .sort((a, b) => a.step_order - b.step_order);
-    campaignMap.set(c.id, {
+
+    const active: ActiveCampaign = {
       id: c.id,
       user_id: c.user_id,
       name: c.name,
       steps,
       senderName,
       replyTo: prof?.email ?? null,
-    });
+      sendWindowStart: c.send_window_start ?? "09:00",
+      sendWindowEnd: c.send_window_end ?? "17:00",
+      sendDays: c.send_days ?? ["mon", "tue", "wed", "thu", "fri"],
+      timezone: c.timezone ?? "UTC",
+    };
+
+    if (!isWithinSendWindow(active)) {
+      console.log(
+        `[outreach-tick] campaign "${active.name}" out of window (${active.sendWindowStart}-${active.sendWindowEnd} ${active.timezone}), skipping`
+      );
+      skippedOutOfWindow += 1;
+      continue;
+    }
+    campaignMap.set(c.id, active);
   }
 
-  // 3. Find due prospects across all active campaigns.
+  if (campaignMap.size === 0) {
+    return {
+      campaigns: campaigns.length,
+      due: 0,
+      sent: 0,
+      failed: 0,
+      skipped: skippedOutOfWindow,
+    };
+  }
+
+  // 4. Find due prospects.
   const nowIso = new Date().toISOString();
-  const campaignIds = campaigns.map((c) => c.id);
+  const activeCampaignIds = Array.from(campaignMap.keys());
   const { data: prospects, error: prospErr } = await supabase
     .from("outreach_prospects")
     .select(
-      "id,campaign_id,lead_id,email,current_step,leads(name,category)"
+      "id,campaign_id,lead_id,email,current_step,retry_count,leads(name,category)"
     )
-    .in("campaign_id", campaignIds)
+    .in("campaign_id", activeCampaignIds)
     .in("status", ["pending", "in_progress"])
     .or(`next_send_at.is.null,next_send_at.lte.${nowIso}`)
     .limit(200);
 
   if (prospErr) {
     console.error("[outreach-tick] fetch prospects failed:", prospErr);
-    return { campaigns: campaigns.length, due: 0, sent: 0, failed: 0 };
+    return {
+      campaigns: campaigns.length,
+      due: 0,
+      sent: 0,
+      failed: 0,
+      skipped: skippedOutOfWindow,
+    };
   }
 
   const due = (prospects ?? []).map((p) => ({
@@ -156,21 +210,27 @@ async function tick(): Promise<TickResult> {
     lead_id: p.lead_id as string,
     email: p.email as string,
     current_step: p.current_step as number,
+    retry_count: (p.retry_count as number) ?? 0,
     lead: Array.isArray(p.leads)
       ? (p.leads[0] as { name: string; category: string | null } | null) ?? null
       : (p.leads as { name: string; category: string | null } | null) ?? null,
   })) as Prospect[];
 
+  console.log(`[outreach-tick] ${due.length} prospect(s) due`);
+
   if (due.length === 0) {
-    // Even if no sends, check if any campaigns are now empty and should
-    // be marked completed.
-    await sweepCompletedCampaigns(campaignIds);
-    return { campaigns: campaigns.length, due: 0, sent: 0, failed: 0 };
+    await sweepCompletedCampaigns(activeCampaignIds);
+    return {
+      campaigns: campaigns.length,
+      due: 0,
+      sent: 0,
+      failed: 0,
+      skipped: skippedOutOfWindow,
+    };
   }
 
-  // 4. Claim the batch — bump next_send_at forward to prevent a
-  //    concurrent tick from grabbing the same rows.
-  const claimUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  // 5. Claim the batch.
+  const claimUntil = new Date(Date.now() + CLAIM_WINDOW_MS).toISOString();
   await supabase
     .from("outreach_prospects")
     .update({ next_send_at: claimUntil })
@@ -179,12 +239,12 @@ async function tick(): Promise<TickResult> {
       due.map((p) => p.id)
     );
 
-  // 5. Process each prospect serially. Resend handles bursts fine; we don't
-  //    need internal concurrency here and serial keeps DB ordering simple.
+  // 6. Process each prospect with a randomized inter-send delay.
   let sent = 0;
   let failed = 0;
 
-  for (const p of due) {
+  for (let i = 0; i < due.length; i++) {
+    const p = due[i];
     const campaign = campaignMap.get(p.campaign_id);
     if (!campaign) continue;
 
@@ -192,7 +252,6 @@ async function tick(): Promise<TickResult> {
     const nextStep = campaign.steps.find((s) => s.step_order === nextStepOrder);
 
     if (!nextStep) {
-      // No more steps — mark completed.
       await supabase
         .from("outreach_prospects")
         .update({ status: "completed", next_send_at: null })
@@ -212,6 +271,20 @@ async function tick(): Promise<TickResult> {
       category: leadCategory,
       sender: campaign.senderName,
     });
+
+    // Random delay between sends (skip on the first iteration). Spam filters
+    // flag dead-uniform bot intervals; this looks more like a person typing.
+    if (i > 0) {
+      const delay = randInRange(MIN_INTER_SEND_MS, MAX_INTER_SEND_MS);
+      console.log(
+        `[outreach-tick] waiting ${Math.round(delay / 1000)}s before next send (humanization)`
+      );
+      await sleep(delay);
+    }
+
+    console.log(
+      `[outreach-tick] sending step ${nextStepOrder} → ${p.email} (campaign "${campaign.name}")`
+    );
 
     const sendOutcome = await sendEmail({
       to: p.email,
@@ -239,6 +312,7 @@ async function tick(): Promise<TickResult> {
           last_sent_at: new Date().toISOString(),
           next_send_at: newNextSendAt,
           status: newStatus,
+          retry_count: 0,
         })
         .eq("id", p.id);
 
@@ -258,14 +332,34 @@ async function tick(): Promise<TickResult> {
       });
     } else {
       failed += 1;
-      // Retry in 1 hour. After 3 failures (tracked elsewhere later),
-      // we'd flip to bounced — for v1, just keep retrying.
-      await supabase
-        .from("outreach_prospects")
-        .update({
-          next_send_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        })
-        .eq("id", p.id);
+      const newRetryCount = p.retry_count + 1;
+      console.warn(
+        `[outreach-tick] send failed (attempt ${newRetryCount}/${MAX_RETRIES}) for ${p.email}: ${sendOutcome.error}`
+      );
+
+      if (newRetryCount >= MAX_RETRIES) {
+        // Give up on this prospect.
+        await supabase
+          .from("outreach_prospects")
+          .update({
+            status: "bounced",
+            bounce_reason: sendOutcome.error,
+            next_send_at: null,
+            retry_count: newRetryCount,
+          })
+          .eq("id", p.id);
+      } else {
+        // Exponential backoff: 1h, 4h, 12h
+        const backoffMs =
+          [60, 240, 720][newRetryCount - 1] * 60 * 1000;
+        await supabase
+          .from("outreach_prospects")
+          .update({
+            next_send_at: new Date(Date.now() + backoffMs).toISOString(),
+            retry_count: newRetryCount,
+          })
+          .eq("id", p.id);
+      }
 
       await supabase.from("email_sends").insert({
         user_id: campaign.user_id,
@@ -285,14 +379,15 @@ async function tick(): Promise<TickResult> {
     }
   }
 
-  // 6. Sweep — mark campaigns completed when no pending/in_progress
-  //    prospects remain.
-  await sweepCompletedCampaigns(campaignIds);
+  await sweepCompletedCampaigns(activeCampaignIds);
 
-  console.log(
-    `[outreach-tick] processed ${due.length}, sent ${sent}, failed ${failed}`
-  );
-  return { campaigns: campaigns.length, due: due.length, sent, failed };
+  return {
+    campaigns: campaigns.length,
+    due: due.length,
+    sent,
+    failed,
+    skipped: skippedOutOfWindow,
+  };
 }
 
 async function sweepCompletedCampaigns(campaignIds: string[]): Promise<void> {
@@ -315,6 +410,50 @@ async function sweepCompletedCampaigns(campaignIds: string[]): Promise<void> {
   }
 }
 
+// Returns true when the campaign's current time-in-its-timezone falls inside
+// (sendWindowStart..sendWindowEnd) AND today's weekday is in sendDays.
+function isWithinSendWindow(c: ActiveCampaign): boolean {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: c.timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      weekday: "short",
+    });
+    const parts = fmt.formatToParts(new Date());
+    const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+    const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+    const weekday =
+      parts.find((p) => p.type === "weekday")?.value.toLowerCase() ?? "";
+    const day3 = weekday.slice(0, 3);
+
+    const lowerDays = (c.sendDays ?? []).map((d) => d.toLowerCase().slice(0, 3));
+    if (!lowerDays.includes(day3)) return false;
+
+    const nowMin = parseInt(hour, 10) * 60 + parseInt(minute, 10);
+    const startMin = toMinutes(c.sendWindowStart);
+    const endMin = toMinutes(c.sendWindowEnd);
+    return nowMin >= startMin && nowMin < endMin;
+  } catch (err) {
+    console.error("[outreach-tick] window check failed:", err);
+    return true; // fail-open so a bad timezone string doesn't freeze sending
+  }
+}
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map((v) => parseInt(v, 10) || 0);
+  return h * 60 + m;
+}
+
+function randInRange(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 type SendOutcome =
   | { ok: true; id: string }
   | { ok: false; error: string };
@@ -326,9 +465,6 @@ type SendArgs = {
   replyTo: string | null;
 };
 
-// Pick the first configured sender. Order is intentional: Gmail SMTP is
-// preferred because it works without a verified domain and the from address
-// is the user's real Gmail (better reply UX, no "via resend.dev" footer).
 async function sendEmail(args: SendArgs): Promise<SendOutcome> {
   if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
     return sendViaGmail(args);
@@ -336,14 +472,11 @@ async function sendEmail(args: SendArgs): Promise<SendOutcome> {
   if (process.env.RESEND_API_KEY) {
     return sendViaResend(args);
   }
-  // Neither configured — log instead. UI still testable; nothing actually sent.
   console.log("[outreach-tick] (no sender configured — logging)");
   console.log("[outreach-tick] to:", args.to, "subject:", args.subject);
   return { ok: true, id: "console-log-" + Date.now() };
 }
 
-// Lazy singleton transporter — nodemailer reuses the SMTP connection across
-// sends, so we only build it once. Re-created if env changes (process restart).
 let gmailTransporter: Transporter | null = null;
 function getGmailTransporter(): Transporter {
   if (gmailTransporter) return gmailTransporter;
@@ -361,9 +494,6 @@ function getGmailTransporter(): Transporter {
 
 async function sendViaGmail(args: SendArgs): Promise<SendOutcome> {
   const user = process.env.GMAIL_USER!;
-  // Gmail forces the "from" address to match the authenticated account
-  // regardless of what we set. We still pass a friendly display name if the
-  // env value contains one, otherwise just the address.
   const from = user.includes("<") ? user : `<${user}>`;
   try {
     const info = await getGmailTransporter().sendMail({
@@ -421,8 +551,6 @@ async function sendViaResend(args: SendArgs): Promise<SendOutcome> {
   }
 }
 
-// Mirrored from src/lib/email-templates.ts — worker is a separate package
-// so we can't import. Tiny enough to keep both copies in sync by eye.
 function renderTemplate(
   text: string,
   values: { name?: string; category?: string; sender?: string }
@@ -433,7 +561,6 @@ function renderTemplate(
     .replace(/\{\{\s*sender\s*\}\}/g, values.sender ?? "{{sender}}");
 }
 
-// Plain text → HTML. Same as src/app/api/email-campaigns/send/route.ts.
 function bodyToHtml(text: string): string {
   const escaped = text
     .replace(/&/g, "&amp;")

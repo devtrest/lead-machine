@@ -1,17 +1,24 @@
 import Link from "next/link";
-import { Plus, Mail, ArrowRight } from "lucide-react";
+import { Plus, Mail, Send, Users, TrendingUp, Activity } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { StatusBadge } from "@/components/outreach/StatusBadge";
+import { OutreachDashboard } from "@/components/outreach/OutreachDashboard";
 
 export const dynamic = "force-dynamic";
 
-type CampaignRow = {
+type CampaignSummary = {
   id: string;
   name: string;
   status: string;
   scan_run_id: string;
   created_at: string;
-  scan_runs: { keyword: string; location: string } | { keyword: string; location: string }[] | null;
+  started_at: string | null;
+  finished_at: string | null;
+  niche: { keyword: string; location: string } | null;
+  prospects: number;
+  contacted: number;
+  replied: number;
+  bounced: number;
+  sentLast7Days: number[];
 };
 
 export default async function OutreachListPage() {
@@ -20,19 +27,21 @@ export default async function OutreachListPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: campaigns } = await supabase
+  // 1. Campaigns
+  const { data: campaignsRaw } = await supabase
     .from("outreach_campaigns")
     .select(
-      "id,name,status,scan_run_id,created_at,scan_runs(keyword,location)"
+      "id,name,status,scan_run_id,created_at,started_at,finished_at,scan_runs(keyword,location)"
     )
     .eq("user_id", user!.id)
     .order("created_at", { ascending: false });
 
-  // Per-campaign prospect counts (single batched query).
-  const campaignIds = (campaigns ?? []).map((c) => c.id);
-  const countsByCampaign = new Map<
+  const campaignIds = (campaignsRaw ?? []).map((c) => c.id);
+
+  // 2. Prospect counts (single batched query)
+  const prospectStats = new Map<
     string,
-    { total: number; pending: number; sent: number }
+    { total: number; contacted: number; replied: number; bounced: number }
   >();
   if (campaignIds.length > 0) {
     const { data: prospects } = await supabase
@@ -41,19 +50,132 @@ export default async function OutreachListPage() {
       .in("campaign_id", campaignIds);
     for (const p of prospects ?? []) {
       const cid = p.campaign_id as string;
-      const entry = countsByCampaign.get(cid) ?? {
+      const entry = prospectStats.get(cid) ?? {
         total: 0,
-        pending: 0,
-        sent: 0,
+        contacted: 0,
+        replied: 0,
+        bounced: 0,
       };
       entry.total += 1;
-      if (p.status === "pending") entry.pending += 1;
-      if ((p.current_step as number) > 0) entry.sent += 1;
-      countsByCampaign.set(cid, entry);
+      if ((p.current_step as number) > 0) entry.contacted += 1;
+      if (p.status === "replied") entry.replied += 1;
+      if (p.status === "bounced") entry.bounced += 1;
+      prospectStats.set(cid, entry);
     }
   }
 
-  const list = (campaigns ?? []) as CampaignRow[];
+  // 3. Per-campaign send activity (last 7 days). One query, bucket in JS.
+  const sevenDaysAgo = new Date(
+    Date.now() - 7 * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const sendBuckets = new Map<string, number[]>(); // campaign_id -> 7-day buckets
+  if (campaignIds.length > 0) {
+    const { data: sends } = await supabase
+      .from("email_sends")
+      .select("campaign_id,sent_at,status")
+      .in("campaign_id", campaignIds)
+      .eq("status", "sent")
+      .gte("sent_at", sevenDaysAgo);
+
+    for (const cid of campaignIds) {
+      sendBuckets.set(cid, new Array(7).fill(0));
+    }
+    const startMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const s of sends ?? []) {
+      if (!s.sent_at) continue;
+      const cid = s.campaign_id as string;
+      const dayIdx = Math.min(
+        6,
+        Math.max(
+          0,
+          Math.floor(
+            (new Date(s.sent_at as string).getTime() - startMs) /
+              (24 * 60 * 60 * 1000)
+          )
+        )
+      );
+      const bucket = sendBuckets.get(cid);
+      if (bucket) bucket[dayIdx] += 1;
+    }
+  }
+
+  const campaigns: CampaignSummary[] = (campaignsRaw ?? []).map((c) => {
+    const niche = Array.isArray(c.scan_runs) ? c.scan_runs[0] : c.scan_runs;
+    const stats = prospectStats.get(c.id) ?? {
+      total: 0,
+      contacted: 0,
+      replied: 0,
+      bounced: 0,
+    };
+    return {
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      scan_run_id: c.scan_run_id,
+      created_at: c.created_at,
+      started_at: c.started_at,
+      finished_at: c.finished_at,
+      niche: niche
+        ? { keyword: niche.keyword, location: niche.location }
+        : null,
+      prospects: stats.total,
+      contacted: stats.contacted,
+      replied: stats.replied,
+      bounced: stats.bounced,
+      sentLast7Days: sendBuckets.get(c.id) ?? new Array(7).fill(0),
+    };
+  });
+
+  // 4. Hero stats
+  const activeCount = campaigns.filter((c) => c.status === "active").length;
+  const totalProspects = campaigns.reduce((s, c) => s + c.prospects, 0);
+  const totalContacted = campaigns.reduce((s, c) => s + c.contacted, 0);
+  const totalReplied = campaigns.reduce((s, c) => s + c.replied, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const { count: sentToday } = await supabase
+    .from("email_sends")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user!.id)
+    .eq("status", "sent")
+    .gte("sent_at", today.toISOString());
+
+  const replyRate =
+    totalContacted > 0
+      ? Math.round((totalReplied / totalContacted) * 100)
+      : 0;
+
+  const heroStats = [
+    {
+      label: "Active campaigns",
+      value: activeCount,
+      icon: Activity,
+      accent: "var(--success-700)",
+      bg: "var(--success-50)",
+    },
+    {
+      label: "Sent today",
+      value: sentToday ?? 0,
+      icon: Send,
+      accent: "var(--brand-700)",
+      bg: "var(--brand-50)",
+    },
+    {
+      label: "Total prospects",
+      value: totalProspects,
+      icon: Users,
+      accent: "var(--ink-strong)",
+      bg: "var(--surface-sunken)",
+    },
+    {
+      label: "Reply rate",
+      value: `${replyRate}%`,
+      icon: TrendingUp,
+      accent: "var(--warning-700)",
+      bg: "var(--warning-50)",
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -63,8 +185,9 @@ export default async function OutreachListPage() {
             Outreach
           </h1>
           <p className="mt-1 text-sm text-[var(--ink-muted)]">
-            Multi-step email campaigns that run on autopilot. Each campaign
-            pulls leads from one of your existing niches.
+            Multi-step email sequences on autopilot. Pull leads from your
+            generated niches, build a sequence, and let the worker handle the
+            rest.
           </p>
         </div>
         <Link
@@ -76,78 +199,11 @@ export default async function OutreachListPage() {
         </Link>
       </div>
 
-      {list.length === 0 ? (
-        <div className="surface-card p-10 text-center">
-          <Mail className="mx-auto h-10 w-10 text-[var(--ink-subtle)]" />
-          <h3 className="mt-3 text-base font-semibold text-[var(--ink-strong)]">
-            No outreach campaigns yet
-          </h3>
-          <p className="mt-1.5 text-sm text-[var(--ink-muted)]">
-            Create a campaign, add a sequence of emails, pick leads from one of
-            your generated niches, and let it run.
-          </p>
-          <Link
-            href="/user/outreach/new"
-            className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
-          >
-            <Plus className="h-4 w-4" />
-            Create your first campaign
-          </Link>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {list.map((c) => {
-            const niche = Array.isArray(c.scan_runs)
-              ? c.scan_runs[0]
-              : c.scan_runs;
-            const counts = countsByCampaign.get(c.id) ?? {
-              total: 0,
-              pending: 0,
-              sent: 0,
-            };
-            return (
-              <Link
-                key={c.id}
-                href={`/user/outreach/${c.id}`}
-                className="surface-card group block space-y-3 p-5 transition hover:shadow-[var(--shadow-md)]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-semibold text-[var(--ink-strong)]">
-                      {c.name}
-                    </div>
-                    {niche ? (
-                      <div className="mt-0.5 truncate text-sm text-[var(--ink-muted)]">
-                        <span className="capitalize">{niche.keyword}</span> ·{" "}
-                        {niche.location}
-                      </div>
-                    ) : null}
-                  </div>
-                  <StatusBadge status={c.status} />
-                </div>
-
-                <div className="flex items-center gap-4 text-xs text-[var(--ink-muted)]">
-                  <span>
-                    <span className="font-semibold text-[var(--ink-strong)]">
-                      {counts.total}
-                    </span>{" "}
-                    prospects
-                  </span>
-                  <span>
-                    <span className="font-semibold text-[var(--ink-strong)]">
-                      {counts.sent}
-                    </span>{" "}
-                    contacted
-                  </span>
-                  <span className="ml-auto inline-flex items-center gap-1 font-semibold text-[var(--brand-700)] transition group-hover:gap-1.5">
-                    Open <ArrowRight className="h-3 w-3" />
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
+      <OutreachDashboard
+        heroStats={heroStats}
+        campaigns={campaigns}
+        emptyIcon={Mail}
+      />
     </div>
   );
 }
