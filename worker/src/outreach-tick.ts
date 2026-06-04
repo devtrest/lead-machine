@@ -2,7 +2,16 @@
 //
 // For every active campaign, finds prospects whose next step is due
 // (next_send_at <= now, or null = send immediately), sends the next
-// step via Resend, advances prospect state, and logs to email_sends.
+// step, advances prospect state, and logs to email_sends.
+//
+// Sender strategy (first-configured wins):
+//   1. Gmail SMTP via nodemailer (GMAIL_USER + GMAIL_APP_PASSWORD)
+//      — preferred when the user doesn't have a verified sending domain;
+//        emails come from their Gmail address, replies land naturally.
+//      — Google caps at ~500 sends/day per account.
+//   2. Resend HTTP API (RESEND_API_KEY + OUTREACH_FROM)
+//      — requires a verified domain; only used when Gmail isn't configured.
+//   3. console.log fallback — UI still works, no real send.
 //
 // Status transitions per prospect:
 //   pending  → in_progress (after first send)
@@ -14,6 +23,7 @@
 // 10 min (shouldn't happen at small scale), a second tick could grab
 // the same row — accept that for v1; revisit when volume grows.
 
+import nodemailer, { type Transporter } from "nodemailer";
 import { supabase } from "./db.js";
 
 type Step = {
@@ -203,7 +213,7 @@ async function tick(): Promise<TickResult> {
       sender: campaign.senderName,
     });
 
-    const sendOutcome = await sendViaResend({
+    const sendOutcome = await sendEmail({
       to: p.email,
       subject: renderedSubject,
       html: bodyToHtml(renderedBody),
@@ -309,30 +319,75 @@ type SendOutcome =
   | { ok: true; id: string }
   | { ok: false; error: string };
 
-async function sendViaResend({
-  to,
-  subject,
-  html,
-  replyTo,
-}: {
+type SendArgs = {
   to: string;
   subject: string;
   html: string;
   replyTo: string | null;
-}): Promise<SendOutcome> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
+};
+
+// Pick the first configured sender. Order is intentional: Gmail SMTP is
+// preferred because it works without a verified domain and the from address
+// is the user's real Gmail (better reply UX, no "via resend.dev" footer).
+async function sendEmail(args: SendArgs): Promise<SendOutcome> {
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    return sendViaGmail(args);
+  }
+  if (process.env.RESEND_API_KEY) {
+    return sendViaResend(args);
+  }
+  // Neither configured — log instead. UI still testable; nothing actually sent.
+  console.log("[outreach-tick] (no sender configured — logging)");
+  console.log("[outreach-tick] to:", args.to, "subject:", args.subject);
+  return { ok: true, id: "console-log-" + Date.now() };
+}
+
+// Lazy singleton transporter — nodemailer reuses the SMTP connection across
+// sends, so we only build it once. Re-created if env changes (process restart).
+let gmailTransporter: Transporter | null = null;
+function getGmailTransporter(): Transporter {
+  if (gmailTransporter) return gmailTransporter;
+  gmailTransporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.GMAIL_USER!,
+      pass: process.env.GMAIL_APP_PASSWORD!.replace(/\s+/g, ""),
+    },
+  });
+  return gmailTransporter;
+}
+
+async function sendViaGmail(args: SendArgs): Promise<SendOutcome> {
+  const user = process.env.GMAIL_USER!;
+  // Gmail forces the "from" address to match the authenticated account
+  // regardless of what we set. We still pass a friendly display name if the
+  // env value contains one, otherwise just the address.
+  const from = user.includes("<") ? user : `<${user}>`;
+  try {
+    const info = await getGmailTransporter().sendMail({
+      from,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+    });
+    return { ok: true, id: info.messageId || `gmail-${Date.now()}` };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Gmail SMTP error",
+    };
+  }
+}
+
+async function sendViaResend(args: SendArgs): Promise<SendOutcome> {
+  const apiKey = process.env.RESEND_API_KEY!.trim();
   const FROM =
     process.env.OUTREACH_FROM ??
     process.env.MAIL_FROM ??
     "Lead Machine <onboarding@resend.dev>";
-
-  if (!apiKey) {
-    // No key — log instead. Same pattern as src/lib/mailer.ts.
-    console.log("[outreach-tick] (no RESEND_API_KEY — logging)");
-    console.log("[outreach-tick] to:", to, "subject:", subject);
-    return { ok: true, id: "console-log-" + Date.now() };
-  }
-
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -342,10 +397,10 @@ async function sendViaResend({
       },
       body: JSON.stringify({
         from: FROM,
-        to: [to],
-        subject,
-        html,
-        ...(replyTo ? { reply_to: replyTo } : {}),
+        to: [args.to],
+        subject: args.subject,
+        html: args.html,
+        ...(args.replyTo ? { reply_to: args.replyTo } : {}),
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {

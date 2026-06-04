@@ -379,8 +379,14 @@ is fast enough that 30 s is plenty.
   - `SUPABASE_SERVICE_ROLE_KEY` (the long JWT from Supabase → Settings → API)
   - `GOOGLE_MAPS_API_KEY` (Places API New, with Places API New enabled in
     Google Cloud Console for the project)
-- For outreach autopilot: `RESEND_API_KEY` + `OUTREACH_FROM` (verified domain).
-  Without these the 15-min tick logs to stdout instead of sending.
+- For outreach autopilot: configure ONE of the two sender strategies:
+  - **Gmail SMTP** (no domain needed): `GMAIL_USER` (your gmail address) +
+    `GMAIL_APP_PASSWORD` (16-char app password from
+    https://myaccount.google.com/apppasswords; requires 2FA enabled).
+    Caps at ~500 sends/day per free Gmail account, ~2000/day for Workspace.
+  - **Resend HTTP API** (requires verified domain): `RESEND_API_KEY` +
+    `OUTREACH_FROM`. Used only when GMAIL_* vars are absent.
+  - With neither set, the 15-min tick logs to stdout instead of sending.
 - Optional: `MISTRAL_API_KEY` (AI keyword expansion), `MAIL_FROM` (fallback)
 
 ### Supabase auth URL config
@@ -471,8 +477,8 @@ is fast enough that 30 s is plenty.
   `/user/outreach`. Each campaign has a name, a parent scan_run, a sequence
   of steps (subject/body/delay_days), and a set of prospects (leads with
   emails). The Railway worker runs a 15-min `setInterval` (`outreach-tick.ts`)
-  that picks due prospects, sends the next step via Resend, advances
-  `current_step`, and computes `next_send_at` from the next step's delay.
+  that picks due prospects, sends the next step, advances `current_step`,
+  and computes `next_send_at` from the next step's delay.
   Bearer-auth'd `POST /outreach/tick` lets the Vercel `start` route poke the
   worker so the first send fires within seconds. Concurrency safety: tick
   bumps `next_send_at` 10 min into the future as a soft claim. Status
@@ -481,6 +487,17 @@ is fast enough that 30 s is plenty.
   CheckCircle2 to mark replied. Attachments per step deferred.
   Picked Railway worker over Vercel Cron (Hobby tier only does daily) so
   the autopilot stays on the same infra we already pay for.
+- **June 2026 — outreach sender = Gmail SMTP first, Resend fallback.** The
+  initial outreach build assumed a verified Resend domain; the user only had
+  a Vercel subdomain (which can't host DNS records) and didn't want to buy
+  a domain. Swapped `outreach-tick.ts` to a strategy chain: Gmail SMTP via
+  nodemailer + App Password is preferred (no domain needed; ~500/day cap;
+  ToS-grey for bulk cold outreach but works), then Resend with verified
+  domain, then console.log. Added `nodemailer` + `@types/nodemailer` to
+  worker deps. New env vars: `GMAIL_USER`, `GMAIL_APP_PASSWORD`. Gmail
+  forces the SMTP "from" to match the authenticated user, so the
+  Reply-To stays as the user's profile email — though when GMAIL_USER ==
+  profile.email they're the same and replies just land naturally.
 
 ## Open work / followups
 
