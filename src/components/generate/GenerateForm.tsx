@@ -252,13 +252,18 @@ export function GenerateForm() {
         total: (event.total as number) ?? 0,
         requested: target,
       });
-      // Refresh server-rendered values (credit balance in topbar, etc.) so
-      // the user sees the deducted credits immediately without a manual
-      // tab refresh.
       router.refresh();
       return;
     }
     if (!phase) return;
+
+    // First sign of life from the worker — the scrape is in flight.
+    // Redirect the user to the Scraping campaigns page where they can watch
+    // live progress that's resilient to disconnects. The fetch stays alive
+    // until this component unmounts on navigation; the worker keeps running
+    // on Railway regardless.
+    router.push("/user/jobs");
+    return;
 
     // Only accept UI-tracked phases. The scraper's internal "complete" event
     // is redundant with the route's "saving" event that follows immediately.

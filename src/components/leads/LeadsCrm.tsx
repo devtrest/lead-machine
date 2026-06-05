@@ -390,10 +390,10 @@ export function LeadsCrm() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href="/user/campaigns"
+              href="/user/jobs"
               className="rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-3 py-1.5 text-xs font-medium text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
             >
-              All campaigns
+              All scraping campaigns
             </Link>
             <button
               type="button"

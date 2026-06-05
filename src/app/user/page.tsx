@@ -225,7 +225,7 @@ export default async function DashboardPage() {
               </p>
             </div>
             <Link
-              href="/user/campaigns"
+              href="/user/jobs"
               className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
             >
               View all <ArrowRight className="h-3 w-3" />

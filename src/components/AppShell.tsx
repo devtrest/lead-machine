@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Sparkles,
   Users,
-  Layers,
   Settings,
   LogOut,
   Menu,
@@ -31,18 +30,90 @@ type NavItem = {
   adminOnly?: boolean;
 };
 
-const navItems: NavItem[] = [
-  { href: "/user", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-  { href: "/user/generate", label: "Generate", icon: <Sparkles className="h-4 w-4" /> },
-  { href: "/user/jobs", label: "Jobs", icon: <Activity className="h-4 w-4" /> },
-  { href: "/user/leads", label: "Leads", icon: <Users className="h-4 w-4" /> },
-  { href: "/user/campaigns", label: "Campaigns", icon: <Layers className="h-4 w-4" /> },
-  { href: "/user/billing", label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
-  { href: "/user/outreach", label: "Outreach", icon: <Mail className="h-4 w-4" /> },
-  { href: "/user/inbox", label: "Inbox", icon: <Inbox className="h-4 w-4" /> },
-  { href: "/user/senders", label: "Senders", icon: <AtSign className="h-4 w-4" /> },
-  { href: "/user/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
-  { href: "/admin", label: "Admin", icon: <Sparkle className="h-4 w-4" />, adminOnly: true },
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
+
+// Grouped navigation. Each section is rendered with a small uppercase
+// header so the sidebar reads like a navigation panel, not a flat list.
+const navSections: NavSection[] = [
+  {
+    label: "Overview",
+    items: [
+      {
+        href: "/user",
+        label: "Dashboard",
+        icon: <LayoutDashboard className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    label: "Lead engine",
+    items: [
+      {
+        href: "/user/generate",
+        label: "Generate leads",
+        icon: <Sparkles className="h-4 w-4" />,
+      },
+      {
+        href: "/user/jobs",
+        label: "Scraping campaigns",
+        icon: <Activity className="h-4 w-4" />,
+      },
+      {
+        href: "/user/leads",
+        label: "Lead database",
+        icon: <Users className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    label: "Outreach",
+    items: [
+      {
+        href: "/user/outreach",
+        label: "Email campaigns",
+        icon: <Mail className="h-4 w-4" />,
+      },
+      {
+        href: "/user/inbox",
+        label: "Unified inbox",
+        icon: <Inbox className="h-4 w-4" />,
+      },
+      {
+        href: "/user/senders",
+        label: "Sender accounts",
+        icon: <AtSign className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      {
+        href: "/user/billing",
+        label: "Billing & credits",
+        icon: <CreditCard className="h-4 w-4" />,
+      },
+      {
+        href: "/user/settings",
+        label: "Settings",
+        icon: <Settings className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      {
+        href: "/admin",
+        label: "Admin console",
+        icon: <Sparkle className="h-4 w-4" />,
+        adminOnly: true,
+      },
+    ],
+  },
 ];
 
 type Props = {
@@ -67,7 +138,12 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
     router.refresh();
   }
 
-  const visibleNav = navItems.filter((n) => !n.adminOnly || role === "admin");
+  const visibleSections = navSections
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter((n) => !n.adminOnly || role === "admin"),
+    }))
+    .filter((sec) => sec.items.length > 0);
   const initials = initialsFor(fullName ?? email);
 
   return (
@@ -76,7 +152,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
         {/* Sidebar */}
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface-elev)]/80 backdrop-blur-sm lg:flex">
           <SidebarContent
-            visibleNav={visibleNav}
+            sections={visibleSections}
             pathname={pathname}
             email={email}
             credits={credits}
@@ -104,7 +180,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                 className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[var(--border)] bg-[var(--surface-elev)] lg:hidden"
               >
                 <SidebarContent
-                  visibleNav={visibleNav}
+                  sections={visibleSections}
                   pathname={pathname}
                   email={email}
                   credits={credits}
@@ -214,7 +290,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
 }
 
 function SidebarContent({
-  visibleNav,
+  sections,
   pathname,
   email,
   credits,
@@ -222,7 +298,7 @@ function SidebarContent({
   onSignOut,
   onNavClick,
 }: {
-  visibleNav: NavItem[];
+  sections: NavSection[];
   pathname: string;
   email?: string | null;
   credits: number;
@@ -234,8 +310,15 @@ function SidebarContent({
     <>
       <div className="flex items-center justify-between gap-2 px-5 py-5">
         <Link href="/user" className="flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-mark.svg" alt="" aria-hidden className="h-8 w-8" />
+          <span className="relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[var(--brand-600)] to-[var(--sky-500)] shadow-[0_4px_14px_rgba(79,70,229,0.30)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-mark.svg"
+              alt=""
+              aria-hidden
+              className="h-5 w-5 brightness-0 invert"
+            />
+          </span>
           <span className="text-sm font-semibold tracking-tight text-[var(--ink-strong)]">
             Lead Machine
           </span>
@@ -252,34 +335,49 @@ function SidebarContent({
         ) : null}
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
-        {visibleNav.map((item) => {
-          const active =
-            pathname === item.href ||
-            (item.href !== "/user" && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavClick}
-              className={`relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                active
-                  ? "nav-active"
-                  : "text-[var(--ink-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--ink-strong)]"
-              }`}
-            >
-              {active ? (
-                <motion.span
-                  layoutId="nav-active-pin"
-                  className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-[var(--brand-600)]"
-                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                />
-              ) : null}
-              <span className={active ? "text-[var(--brand-600)]" : ""}>{item.icon}</span>
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-1">
+        {sections.map((sec) => (
+          <div key={sec.label} className="space-y-1">
+            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+              {sec.label}
+            </div>
+            {sec.items.map((item) => {
+              const active =
+                pathname === item.href ||
+                (item.href !== "/user" && pathname.startsWith(item.href));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onNavClick}
+                  className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    active
+                      ? "nav-active"
+                      : "text-[var(--ink-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--ink-strong)]"
+                  }`}
+                >
+                  {active ? (
+                    <motion.span
+                      layoutId="nav-active-pin"
+                      className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-[var(--brand-600)]"
+                      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                    />
+                  ) : null}
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-md transition ${
+                      active
+                        ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
+                        : "text-[var(--ink-muted)] group-hover:text-[var(--ink-strong)]"
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-[var(--border)] p-4">

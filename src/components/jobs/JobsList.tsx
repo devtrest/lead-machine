@@ -11,6 +11,9 @@ import {
   Clock,
   RefreshCw,
   Sparkles,
+  Radar,
+  Activity,
+  Globe,
 } from "lucide-react";
 
 export type JobRun = {
@@ -39,9 +42,6 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
     [runs]
   );
 
-  // Polling effect: while any run is in progress, poll the API every 3s.
-  // Stops automatically when nothing is running so we don't burn cycles
-  // refreshing a static list.
   useEffect(() => {
     if (!anyRunning) {
       if (timerRef.current) {
@@ -73,58 +73,52 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
   const running = runs.filter((r) => r.status === "running");
   const finished = runs.filter((r) => r.status !== "running");
 
+  // Top-line stats — gives the page weight even when no jobs are active.
+  const totalLeads = runs.reduce((s, r) => s + (r.result_count || 0), 0);
+  const completedCount = runs.filter((r) => r.status === "completed").length;
+
   return (
-    <div className="space-y-6">
-      <LiveStatusStrip
-        anyRunning={anyRunning}
+    <div className="space-y-8">
+      <StatsRow
+        running={running.length}
+        completed={completedCount}
+        totalLeads={totalLeads}
         polling={polling}
         lastPolledAt={lastPolledAt}
-        runningCount={running.length}
       />
 
       {running.length > 0 ? (
-        <section className="space-y-2">
-          <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
-            Running now ({running.length})
-          </h2>
-          <div className="space-y-2">
+        <section className="space-y-3">
+          <SectionHeader
+            label="Running now"
+            count={running.length}
+            accent="brand"
+          />
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <AnimatePresence initial={false}>
               {running.map((run) => (
-                <RunCard key={run.id} run={run} />
+                <RunCard key={run.id} run={run} variant="running" />
               ))}
             </AnimatePresence>
           </div>
         </section>
       ) : null}
 
-      <section className="space-y-2">
-        <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
-          {running.length > 0 ? "Recent history" : "Recent jobs"}{" "}
-          ({finished.length})
-        </h2>
+      <section className="space-y-3">
+        <SectionHeader
+          label={running.length > 0 ? "Recent history" : "Recent campaigns"}
+          count={finished.length}
+        />
         {finished.length === 0 ? (
-          <div className="surface-card p-10 text-center">
-            <Sparkles className="mx-auto h-8 w-8 text-[var(--ink-subtle)]" />
-            <h3 className="mt-3 text-base font-semibold text-[var(--ink-strong)]">
-              No jobs yet
-            </h3>
-            <p className="mt-1.5 text-sm text-[var(--ink-muted)]">
-              Click <span className="font-semibold">Generate</span> to kick off
-              your first scrape. The job runs in the background — close this
-              tab if you want.
-            </p>
-            <Link
-              href="/user/generate"
-              className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
-            >
-              <Sparkles className="h-4 w-4" />
-              Generate leads
-            </Link>
-          </div>
+          <EmptyState />
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {finished.map((run) => (
-              <RunCard key={run.id} run={run} />
+              <RunCard
+                key={run.id}
+                run={run}
+                variant={run.status === "failed" ? "failed" : "completed"}
+              />
             ))}
           </div>
         )}
@@ -133,51 +127,151 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
   );
 }
 
-function LiveStatusStrip({
-  anyRunning,
+function StatsRow({
+  running,
+  completed,
+  totalLeads,
   polling,
   lastPolledAt,
-  runningCount,
 }: {
-  anyRunning: boolean;
+  running: number;
+  completed: number;
+  totalLeads: number;
   polling: boolean;
   lastPolledAt: number | null;
-  runningCount: number;
 }) {
   return (
-    <div
-      className={`flex flex-wrap items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs ${
-        anyRunning
-          ? "border-[var(--brand-100)] bg-[var(--brand-50)]/60 text-[var(--brand-700)]"
-          : "border-[var(--border)] bg-[var(--surface-sunken)]/40 text-[var(--ink-muted)]"
-      }`}
-    >
-      {anyRunning ? (
-        <>
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span className="font-semibold">
-            {runningCount} job{runningCount === 1 ? "" : "s"} running
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <StatCard
+        label="Active scrapes"
+        value={running}
+        icon={Radar}
+        accent="brand"
+        suffix={
+          running > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-50)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--brand-700)]">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--brand-500)] opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
+              </span>
+              Live
+            </span>
+          ) : null
+        }
+      />
+      <StatCard
+        label="Completed runs"
+        value={completed}
+        icon={CheckCircle2}
+        accent="success"
+      />
+      <StatCard
+        label="Total leads scraped"
+        value={totalLeads.toLocaleString()}
+        icon={Globe}
+        accent="sky"
+        suffix={
+          <span className="inline-flex items-center gap-1 text-[10px] text-[var(--ink-subtle)]">
+            <RefreshCw
+              className={`h-2.5 w-2.5 ${polling ? "animate-spin text-[var(--brand-600)]" : ""}`}
+            />
+            {polling ? "auto-refresh on" : "live when scraping"}
+            {lastPolledAt ? ` · ${shortAgo(lastPolledAt)}` : ""}
           </span>
-          <span>·</span>
-          <RefreshCw
-            className={`h-3 w-3 ${polling ? "animate-spin" : ""}`}
-          />
-          <span>
-            Auto-refreshing every 3s
-            {lastPolledAt ? ` · last poll ${timeAgoShort(lastPolledAt)}` : ""}
-          </span>
-        </>
-      ) : (
-        <>
-          <CheckCircle2 className="h-3.5 w-3.5 text-[var(--success-700)]" />
-          <span>All jobs are complete — nothing running right now.</span>
-        </>
-      )}
+        }
+      />
     </div>
   );
 }
 
-function RunCard({ run }: { run: JobRun }) {
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accent,
+  suffix,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  accent: "brand" | "success" | "sky";
+  suffix?: React.ReactNode;
+}) {
+  const accentBg = {
+    brand: "bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)]",
+    success:
+      "bg-gradient-to-br from-[var(--success-50)] to-[var(--success-100)]",
+    sky: "bg-gradient-to-br from-[var(--sky-100)] to-[var(--brand-100)]",
+  }[accent];
+  const accentText = {
+    brand: "text-[var(--brand-700)]",
+    success: "text-[var(--success-700)]",
+    sky: "text-[var(--sky-700)]",
+  }[accent];
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      className="surface-card relative overflow-hidden p-5"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            {label}
+          </div>
+          <div className="mt-2.5 text-3xl font-bold tracking-tight tabular-nums text-[var(--ink-strong)]">
+            {value}
+          </div>
+        </div>
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl ${accentBg} ${accentText}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+      {suffix ? <div className="mt-3">{suffix}</div> : null}
+    </motion.div>
+  );
+}
+
+function SectionHeader({
+  label,
+  count,
+  accent,
+}: {
+  label: string;
+  count: number;
+  accent?: "brand";
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={`h-px flex-1 ${accent === "brand" ? "bg-gradient-to-r from-[var(--brand-300)] to-transparent" : "bg-[var(--border)]"}`}
+      />
+      <span
+        className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] ${accent === "brand" ? "text-[var(--brand-700)]" : "text-[var(--ink-subtle)]"}`}
+      >
+        {accent === "brand" ? <Activity className="h-3 w-3" /> : null}
+        {label}
+        <span className="rounded-full bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--ink-muted)]">
+          {count}
+        </span>
+      </span>
+      <span
+        className={`h-px flex-1 ${accent === "brand" ? "bg-gradient-to-l from-[var(--brand-300)] to-transparent" : "bg-[var(--border)]"}`}
+      />
+    </div>
+  );
+}
+
+function RunCard({
+  run,
+  variant,
+}: {
+  run: JobRun;
+  variant: "running" | "completed" | "failed";
+}) {
   const pct =
     run.limit_count > 0
       ? Math.min(100, Math.round((run.result_count / run.limit_count) * 100))
@@ -186,123 +280,193 @@ function RunCard({ run }: { run: JobRun }) {
     new Date(run.finished_at ?? Date.now()).getTime() -
     new Date(run.started_at).getTime();
 
+  const accentBar = {
+    running: "bg-gradient-to-r from-[var(--brand-500)] via-[var(--sky-500)] to-[var(--brand-500)] animate-gradient",
+    completed:
+      "bg-gradient-to-r from-[var(--success-500)] to-[var(--success-600)]",
+    failed: "bg-gradient-to-r from-[var(--danger-500)] to-[var(--danger-600)]",
+  }[variant];
+
+  const iconBg = {
+    running: "bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] text-[var(--brand-700)]",
+    completed:
+      "bg-gradient-to-br from-[var(--success-50)] to-[var(--success-100)] text-[var(--success-700)]",
+    failed:
+      "bg-gradient-to-br from-[var(--danger-50)] to-[var(--danger-100)] text-[var(--danger-700)]",
+  }[variant];
+
   return (
-    <motion.div
+    <motion.article
       layout
-      initial={{ opacity: 0, y: 4 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className="surface-card p-4"
+      exit={{ opacity: 0, y: -6 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      className="surface-card group relative overflow-hidden p-0"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-sm font-semibold capitalize text-[var(--ink-strong)]">
-              {run.keyword}
-            </h3>
-            <span className="text-xs text-[var(--ink-muted)]">
-              · {run.location}
-            </span>
-            <StatusPill status={run.status} />
+      {/* Top accent strip */}
+      <div className={`h-1 w-full ${accentBar}`} />
+
+      <div className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}
+            >
+              {variant === "running" ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : variant === "completed" ? (
+                <CheckCircle2 className="h-5 w-5" />
+              ) : (
+                <XCircle className="h-5 w-5" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-semibold capitalize text-[var(--ink-strong)]">
+                {run.keyword}
+              </h3>
+              <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
+                {run.location}
+              </p>
+              <div className="mt-1.5">
+                <StatusPill variant={variant} />
+              </div>
+            </div>
           </div>
-          <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">
-            Started {new Date(run.started_at).toLocaleString()}
-            {run.status !== "running" ? (
-              <>
-                {" · "}
-                {formatDuration(elapsedMs)}
-              </>
-            ) : (
-              <>
-                {" · "}
-                {formatDuration(elapsedMs)} elapsed
-              </>
-            )}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {run.status !== "failed" && run.result_count > 0 ? (
+          {variant !== "failed" && run.result_count > 0 ? (
             <Link
               href={`/user/leads?campaign=${run.id}`}
-              className="inline-flex items-center gap-1 rounded-lg bg-[var(--brand-600)] px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--brand-600)] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_2px_10px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
             >
               View leads
               <ArrowRight className="h-3 w-3" />
             </Link>
           ) : null}
         </div>
-      </div>
 
-      <div className="mt-3">
-        <div className="flex items-center justify-between text-[11px] text-[var(--ink-muted)]">
-          <span>
-            <span className="font-semibold tabular-nums text-[var(--ink-strong)]">
-              {run.result_count.toLocaleString()}
-            </span>
-            {" / "}
-            <span className="tabular-nums">
-              {run.limit_count.toLocaleString()}
-            </span>{" "}
-            leads
+        {/* Progress */}
+        <div className="space-y-1.5">
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <div className="text-2xl font-bold tabular-nums text-[var(--ink-strong)]">
+                {run.result_count.toLocaleString()}
+                <span className="ml-1 text-sm font-normal text-[var(--ink-muted)]">
+                  / {run.limit_count.toLocaleString()}
+                </span>
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-[var(--ink-subtle)]">
+                Leads collected
+              </div>
+            </div>
+            <div className="text-right">
+              <div
+                className={`text-xl font-bold tabular-nums ${
+                  variant === "failed"
+                    ? "text-[var(--danger-700)]"
+                    : variant === "completed"
+                      ? "text-[var(--success-700)]"
+                      : "text-[var(--brand-700)]"
+                }`}
+              >
+                {pct}%
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-[var(--ink-subtle)]">
+                {variant === "running" ? "in progress" : "delivered"}
+              </div>
+            </div>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+            <motion.div
+              className={`h-full rounded-full ${
+                variant === "failed"
+                  ? "bg-[var(--danger-500)]"
+                  : variant === "completed"
+                    ? "bg-gradient-to-r from-[var(--success-500)] to-[var(--success-600)]"
+                    : "bg-gradient-to-r from-[var(--brand-500)] to-[var(--sky-500)]"
+              }`}
+              initial={{ width: 0 }}
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            />
+          </div>
+        </div>
+
+        {/* Meta row */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--ink-muted)]">
+          <span className="inline-flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {variant === "running"
+              ? `${formatDuration(elapsedMs)} elapsed`
+              : formatDuration(elapsedMs)}
           </span>
-          <span className="tabular-nums">{pct}%</span>
+          <span className="text-[var(--ink-subtle)]">·</span>
+          <span>Started {formatTimestamp(run.started_at)}</span>
         </div>
-        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
-          <motion.div
-            className={`h-full rounded-full ${
-              run.status === "failed"
-                ? "bg-[var(--danger-500)]"
-                : run.status === "completed"
-                  ? "bg-[var(--success-500)]"
-                  : "bg-gradient-to-r from-[var(--brand-500)] to-[var(--sky-500)]"
-            }`}
-            initial={{ width: 0 }}
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          />
-        </div>
-      </div>
 
-      {run.error ? (
-        <div className="mt-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
-          {run.error}
-        </div>
-      ) : null}
-    </motion.div>
+        {run.error ? (
+          <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
+            <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {run.error}
+          </div>
+        ) : null}
+      </div>
+    </motion.article>
   );
 }
 
-function StatusPill({ status }: { status: string }) {
-  if (status === "running") {
+function StatusPill({
+  variant,
+}: {
+  variant: "running" | "completed" | "failed";
+}) {
+  if (variant === "running") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--brand-700)]">
-        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-        Running
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--brand-500)] opacity-75" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
+        </span>
+        Scraping live
       </span>
     );
   }
-  if (status === "completed") {
+  if (variant === "completed") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-[var(--success-100)] bg-[var(--success-50)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--success-700)]">
         <CheckCircle2 className="h-2.5 w-2.5" />
-        Done
-      </span>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[var(--danger-100)] bg-[var(--danger-50)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--danger-700)]">
-        <XCircle className="h-2.5 w-2.5" />
-        Failed
+        Delivered
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-sunken)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
-      <Clock className="h-2.5 w-2.5" />
-      {status}
+    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--danger-100)] bg-[var(--danger-50)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--danger-700)]">
+      <XCircle className="h-2.5 w-2.5" />
+      Failed
     </span>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="surface-card flex flex-col items-center p-12 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] text-[var(--brand-700)]">
+        <Sparkles className="h-6 w-6" />
+      </div>
+      <h3 className="mt-4 text-lg font-semibold text-[var(--ink-strong)]">
+        No scraping campaigns yet
+      </h3>
+      <p className="mx-auto mt-1.5 max-w-sm text-sm text-[var(--ink-muted)]">
+        Start a new run from the Generate page. The scrape executes on our
+        worker — you can close this tab and come back to see the result.
+      </p>
+      <Link
+        href="/user/generate"
+        className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_2px_10px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
+      >
+        <Sparkles className="h-4 w-4" />
+        Start a scraping campaign
+      </Link>
+    </div>
   );
 }
 
@@ -316,9 +480,23 @@ function formatDuration(ms: number): string {
   return `${h}h ${m % 60}m`;
 }
 
-function timeAgoShort(ts: number): string {
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) {
+    return `today at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
+  const yest = new Date();
+  yest.setDate(yest.getDate() - 1);
+  if (d.toDateString() === yest.toDateString()) {
+    return `yesterday at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
+  return d.toLocaleDateString();
+}
+
+function shortAgo(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 5) return "just now";
+  if (s < 10) return "just now";
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
   return `${m}m ago`;
