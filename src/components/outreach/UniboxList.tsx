@@ -8,6 +8,8 @@ import {
   Mail,
   CheckCheck,
   ExternalLink,
+  ShieldCheck,
+  Reply as ReplyIcon,
 } from "lucide-react";
 
 export type UniboxReply = {
@@ -164,10 +166,11 @@ export function UniboxList({ replies }: { replies: UniboxReply[] }) {
                   href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(selected.fromEmail)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-2.5 py-1 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_2px_8px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
                 >
-                  Open in Gmail
-                  <ExternalLink className="h-3 w-3" />
+                  <ReplyIcon className="h-3.5 w-3.5" />
+                  Reply in Gmail
+                  <ExternalLink className="h-3 w-3 opacity-75" />
                 </a>
               </div>
             </div>
@@ -180,11 +183,34 @@ export function UniboxList({ replies }: { replies: UniboxReply[] }) {
               )}
             </div>
 
-            <p className="text-[11px] text-[var(--ink-subtle)]">
-              Reply detection is live: when this message arrived the prospect
-              was automatically marked as replied so the campaign stopped
-              sending follow-ups to them.
-            </p>
+            {selected.campaignId ? (
+              <div className="flex items-start gap-2.5 rounded-xl border border-[var(--success-100)] bg-[var(--success-50)] px-3.5 py-2.5 text-xs text-[var(--success-700)]">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <div className="font-semibold">
+                    Campaign stopped for this contact
+                  </div>
+                  <div className="mt-0.5 leading-relaxed">
+                    Lead Machine will not send any more campaign emails to
+                    this address. Take the conversation over from Gmail —
+                    your replies thread naturally because the campaign send
+                    used your own Gmail account.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2.5 rounded-xl border border-[var(--brand-100)] bg-[var(--brand-50)] px-3.5 py-2.5 text-xs text-[var(--brand-700)]">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <div className="font-semibold">Reply detected</div>
+                  <div className="mt-0.5 leading-relaxed">
+                    This reply doesn&apos;t link to a specific campaign
+                    prospect (likely a test send or one-off). Reply directly
+                    from Gmail to continue the conversation.
+                  </div>
+                </div>
+              </div>
+            )}
           </motion.div>
         ) : null}
       </AnimatePresence>
