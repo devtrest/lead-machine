@@ -41,6 +41,7 @@ type RunningState = {
 
 type Stage =
   | { kind: "idle" }
+  | { kind: "starting" }
   | RunningState
   | { kind: "done"; runId?: string; total: number; requested: number }
   | { kind: "error"; message: string };
@@ -163,13 +164,7 @@ export function GenerateForm() {
       return;
     }
     setTargetError(null);
-
-    setStage({
-      kind: "running",
-      phase: "launching",
-      count: 0,
-      target,
-    });
+    setStage({ kind: "starting" });
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -183,8 +178,10 @@ export function GenerateForm() {
       });
 
       if (!res.ok) {
+        // Surface errors (out of credits, missing profile, etc.) without
+        // navigating away.
         const text = await res.text().catch(() => "");
-        let message = "Generation failed.";
+        let message = "Couldn't start campaign.";
         try {
           const json = JSON.parse(text);
           message = json.error ?? message;
@@ -195,37 +192,12 @@ export function GenerateForm() {
         return;
       }
 
-      if (!res.body) {
-        setStage({ kind: "error", message: "Streaming not supported." });
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const events = buffer.split("\n\n");
-        buffer = events.pop() ?? "";
-
-        for (const block of events) {
-          const line = block
-            .split("\n")
-            .find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          let event: Record<string, unknown>;
-          try {
-            event = JSON.parse(line.slice(6));
-          } catch {
-            continue;
-          }
-          handleEvent(event);
-        }
-      }
+      // Worker accepted the job. Redirect to Scraping campaigns where the
+      // run is showing live. The fetch is left in flight intentionally —
+      // the component unmounts on navigation, which closes the connection
+      // naturally. The worker continues regardless.
+      router.refresh();
+      router.push("/user/jobs");
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setStage({
@@ -233,64 +205,6 @@ export function GenerateForm() {
         message: err instanceof Error ? err.message : "Network error",
       });
     }
-  }
-
-  function handleEvent(event: Record<string, unknown>) {
-    const phase = event.phase as string | undefined;
-
-    if (phase === "error") {
-      setStage({
-        kind: "error",
-        message: (event.message as string) ?? "Generation failed.",
-      });
-      return;
-    }
-    if (phase === "saved") {
-      setStage({
-        kind: "done",
-        runId: event.runId as string | undefined,
-        total: (event.total as number) ?? 0,
-        requested: target,
-      });
-      router.refresh();
-      return;
-    }
-    if (!phase) return;
-
-    // First sign of life from the worker — the scrape is in flight.
-    // Redirect the user to the Scraping campaigns page where they can watch
-    // live progress that's resilient to disconnects. The fetch stays alive
-    // until this component unmounts on navigation; the worker keeps running
-    // on Railway regardless.
-    router.push("/user/jobs");
-    return;
-
-    // Only accept UI-tracked phases. The scraper's internal "complete" event
-    // is redundant with the route's "saving" event that follows immediately.
-    const knownPhases: Phase[] = [
-      "launching",
-      "searching",
-      "discovering",
-      "extracting",
-      "enriching",
-      "harvesting",
-      "saving",
-    ];
-    if (!knownPhases.includes(phase as Phase)) return;
-
-    setStage((prev) => {
-      const baseTarget =
-        (event.target as number) ??
-        (prev.kind === "running" ? prev.target : target);
-      const count =
-        (event.count as number) ?? (prev.kind === "running" ? prev.count : 0);
-      return {
-        kind: "running",
-        phase: phase as Phase,
-        count,
-        target: baseTarget,
-      };
-    });
   }
 
   function reset() {
@@ -306,7 +220,9 @@ export function GenerateForm() {
       />
 
       <AnimatePresence mode="wait">
-        {stage.kind === "idle" || stage.kind === "error" ? (
+        {stage.kind === "idle" ||
+        stage.kind === "error" ||
+        stage.kind === "starting" ? (
           <motion.form
             key="form"
             initial={{ opacity: 0, y: 6 }}
@@ -409,12 +325,24 @@ export function GenerateForm() {
               type="submit"
               size="lg"
               className="w-full"
-              iconLeft={<Sparkles className="h-4 w-4" />}
-              iconRight={<ArrowRight className="h-4 w-4" />}
+              loading={stage.kind === "starting"}
+              disabled={stage.kind === "starting"}
+              iconLeft={
+                stage.kind === "starting" ? undefined : (
+                  <Sparkles className="h-4 w-4" />
+                )
+              }
+              iconRight={
+                stage.kind === "starting" ? undefined : (
+                  <ArrowRight className="h-4 w-4" />
+                )
+              }
             >
-              {target > 0
-                ? `Generate ${target.toLocaleString()} leads`
-                : "Generate leads"}
+              {stage.kind === "starting"
+                ? "Starting campaign…"
+                : target > 0
+                  ? `Start campaign · ${target.toLocaleString()} leads`
+                  : "Start campaign"}
             </Button>
           </motion.form>
         ) : null}

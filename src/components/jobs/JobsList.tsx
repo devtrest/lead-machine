@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Sparkles,
   Radar,
-  Activity,
   Globe,
 } from "lucide-react";
 
@@ -73,7 +72,6 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
   const running = runs.filter((r) => r.status === "running");
   const finished = runs.filter((r) => r.status !== "running");
 
-  // Top-line stats — gives the page weight even when no jobs are active.
   const totalLeads = runs.reduce((s, r) => s + (r.result_count || 0), 0);
   const completedCount = runs.filter((r) => r.status === "completed").length;
 
@@ -88,31 +86,25 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
       />
 
       {running.length > 0 ? (
-        <section className="space-y-3">
-          <SectionHeader
-            label="Running now"
-            count={running.length}
-            accent="brand"
-          />
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <Section title="Running now" count={running.length} accent>
+          <div className="space-y-3">
             <AnimatePresence initial={false}>
               {running.map((run) => (
                 <RunCard key={run.id} run={run} variant="running" />
               ))}
             </AnimatePresence>
           </div>
-        </section>
+        </Section>
       ) : null}
 
-      <section className="space-y-3">
-        <SectionHeader
-          label={running.length > 0 ? "Recent history" : "Recent campaigns"}
-          count={finished.length}
-        />
+      <Section
+        title={running.length > 0 ? "Recent history" : "Recent campaigns"}
+        count={finished.length}
+      >
         {finished.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="space-y-3">
             {finished.map((run) => (
               <RunCard
                 key={run.id}
@@ -122,7 +114,7 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
             ))}
           </div>
         )}
-      </section>
+      </Section>
     </div>
   );
 }
@@ -235,33 +227,31 @@ function StatCard({
   );
 }
 
-function SectionHeader({
-  label,
+function Section({
+  title,
   count,
   accent,
+  children,
 }: {
-  label: string;
+  title: string;
   count: number;
-  accent?: "brand";
+  accent?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span
-        className={`h-px flex-1 ${accent === "brand" ? "bg-gradient-to-r from-[var(--brand-300)] to-transparent" : "bg-[var(--border)]"}`}
-      />
-      <span
-        className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] ${accent === "brand" ? "text-[var(--brand-700)]" : "text-[var(--ink-subtle)]"}`}
-      >
-        {accent === "brand" ? <Activity className="h-3 w-3" /> : null}
-        {label}
-        <span className="rounded-full bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--ink-muted)]">
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <h2
+          className={`text-sm font-semibold ${accent ? "text-[var(--brand-700)]" : "text-[var(--ink-strong)]"}`}
+        >
+          {title}
+        </h2>
+        <span className="rounded-full bg-[var(--surface-sunken)] px-2 py-0.5 text-[10px] font-bold text-[var(--ink-muted)]">
           {count}
         </span>
-      </span>
-      <span
-        className={`h-px flex-1 ${accent === "brand" ? "bg-gradient-to-l from-[var(--brand-300)] to-transparent" : "bg-[var(--border)]"}`}
-      />
-    </div>
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -280,20 +270,19 @@ function RunCard({
     new Date(run.finished_at ?? Date.now()).getTime() -
     new Date(run.started_at).getTime();
 
-  const accentBar = {
-    running: "bg-gradient-to-r from-[var(--brand-500)] via-[var(--sky-500)] to-[var(--brand-500)] animate-gradient",
+  const iconTile = {
+    running:
+      "bg-gradient-to-br from-[var(--brand-500)] to-[var(--sky-500)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.30)]",
     completed:
-      "bg-gradient-to-r from-[var(--success-500)] to-[var(--success-600)]",
-    failed: "bg-gradient-to-r from-[var(--danger-500)] to-[var(--danger-600)]",
+      "bg-gradient-to-br from-[var(--success-500)] to-[var(--success-600)] text-white shadow-[0_4px_14px_rgba(34,197,94,0.25)]",
+    failed:
+      "bg-gradient-to-br from-[var(--danger-500)] to-[var(--danger-600)] text-white shadow-[0_4px_14px_rgba(239,68,68,0.25)]",
   }[variant];
 
-  const iconBg = {
-    running: "bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] text-[var(--brand-700)]",
-    completed:
-      "bg-gradient-to-br from-[var(--success-50)] to-[var(--success-100)] text-[var(--success-700)]",
-    failed:
-      "bg-gradient-to-br from-[var(--danger-50)] to-[var(--danger-100)] text-[var(--danger-700)]",
-  }[variant];
+  const cardRing =
+    variant === "running"
+      ? "ring-1 ring-[var(--brand-100)]"
+      : "ring-1 ring-[var(--border)]";
 
   return (
     <motion.article
@@ -302,16 +291,14 @@ function RunCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="surface-card group relative overflow-hidden p-0"
+      className={`relative overflow-hidden rounded-2xl bg-[var(--surface-elev)] ${cardRing} shadow-[0_1px_3px_rgba(15,23,42,0.04),0_4px_24px_rgba(15,23,42,0.04)]`}
     >
-      {/* Top accent strip */}
-      <div className={`h-1 w-full ${accentBar}`} />
-
-      <div className="space-y-4 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
+      <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center">
+        {/* Left: icon + identity + progress */}
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
             <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconTile}`}
             >
               {variant === "running" ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -321,46 +308,41 @@ function RunCard({
                 <XCircle className="h-5 w-5" />
               )}
             </div>
-            <div className="min-w-0">
-              <h3 className="truncate text-base font-semibold capitalize text-[var(--ink-strong)]">
-                {run.keyword}
-              </h3>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-base font-semibold capitalize text-[var(--ink-strong)]">
+                  {run.keyword}
+                </h3>
+                <StatusPill variant={variant} />
+              </div>
               <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
                 {run.location}
               </p>
-              <div className="mt-1.5">
-                <StatusPill variant={variant} />
+              <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-[var(--ink-subtle)]">
+                <Clock className="h-2.5 w-2.5" />
+                {variant === "running"
+                  ? `${formatDuration(elapsedMs)} elapsed`
+                  : formatDuration(elapsedMs)}
+                <span>·</span>
+                <span>Started {formatTimestamp(run.started_at)}</span>
               </div>
             </div>
           </div>
-          {variant !== "failed" && run.result_count > 0 ? (
-            <Link
-              href={`/user/leads?campaign=${run.id}`}
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[var(--brand-600)] px-3 py-1.5 text-[11px] font-semibold text-white shadow-[0_2px_10px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
-            >
-              View leads
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          ) : null}
-        </div>
 
-        {/* Progress */}
-        <div className="space-y-1.5">
-          <div className="flex items-end justify-between gap-2">
-            <div>
-              <div className="text-2xl font-bold tabular-nums text-[var(--ink-strong)]">
-                {run.result_count.toLocaleString()}
-                <span className="ml-1 text-sm font-normal text-[var(--ink-muted)]">
-                  / {run.limit_count.toLocaleString()}
+          {/* Progress block */}
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-sm">
+                <span className="text-lg font-bold tabular-nums text-[var(--ink-strong)]">
+                  {run.result_count.toLocaleString()}
+                </span>
+                <span className="text-[var(--ink-muted)]">
+                  {" "}
+                  / {run.limit_count.toLocaleString()} leads
                 </span>
               </div>
-              <div className="text-[10px] uppercase tracking-wider text-[var(--ink-subtle)]">
-                Leads collected
-              </div>
-            </div>
-            <div className="text-right">
               <div
-                className={`text-xl font-bold tabular-nums ${
+                className={`text-sm font-bold tabular-nums ${
                   variant === "failed"
                     ? "text-[var(--danger-700)]"
                     : variant === "completed"
@@ -370,47 +352,71 @@ function RunCard({
               >
                 {pct}%
               </div>
-              <div className="text-[10px] uppercase tracking-wider text-[var(--ink-subtle)]">
-                {variant === "running" ? "in progress" : "delivered"}
-              </div>
             </div>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
-            <motion.div
-              className={`h-full rounded-full ${
-                variant === "failed"
-                  ? "bg-[var(--danger-500)]"
-                  : variant === "completed"
-                    ? "bg-gradient-to-r from-[var(--success-500)] to-[var(--success-600)]"
-                    : "bg-gradient-to-r from-[var(--brand-500)] to-[var(--sky-500)]"
-              }`}
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            />
+            <ProgressBar pct={pct} variant={variant} />
           </div>
         </div>
 
-        {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--ink-muted)]">
-          <span className="inline-flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {variant === "running"
-              ? `${formatDuration(elapsedMs)} elapsed`
-              : formatDuration(elapsedMs)}
-          </span>
-          <span className="text-[var(--ink-subtle)]">·</span>
-          <span>Started {formatTimestamp(run.started_at)}</span>
+        {/* Right: action button */}
+        <div className="flex shrink-0 items-center justify-end gap-2 md:flex-col md:items-end">
+          {variant !== "failed" && run.result_count > 0 ? (
+            <Link
+              href={`/user/leads?campaign=${run.id}`}
+              className="inline-flex items-center gap-1 rounded-xl bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white shadow-[0_2px_10px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
+            >
+              View leads
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          ) : null}
         </div>
-
-        {run.error ? (
-          <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
-            <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {run.error}
-          </div>
-        ) : null}
       </div>
+
+      {run.error ? (
+        <div className="mx-5 mb-5 -mt-1 flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
+          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {run.error}
+        </div>
+      ) : null}
     </motion.article>
+  );
+}
+
+function ProgressBar({
+  pct,
+  variant,
+}: {
+  pct: number;
+  variant: "running" | "completed" | "failed";
+}) {
+  const fillClass = {
+    running: "bg-gradient-to-r from-[var(--brand-500)] to-[var(--sky-500)]",
+    completed:
+      "bg-gradient-to-r from-[var(--success-500)] to-[var(--success-600)]",
+    failed: "bg-gradient-to-r from-[var(--danger-500)] to-[var(--danger-600)]",
+  }[variant];
+  return (
+    <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+      <motion.div
+        className={`relative h-full overflow-hidden rounded-full ${fillClass}`}
+        initial={{ width: 0 }}
+        animate={{ width: `${pct}%` }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {variant === "running" ? (
+          // Soft shimmer band travels across the fill while running.
+          <motion.span
+            className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/50 to-transparent"
+            initial={{ x: "-100%" }}
+            animate={{ x: "300%" }}
+            transition={{
+              duration: 1.8,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+          />
+        ) : null}
+      </motion.div>
+    </div>
   );
 }
 
@@ -484,12 +490,12 @@ function formatTimestamp(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
   if (d.toDateString() === today.toDateString()) {
-    return `today at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    return `today ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
   }
   const yest = new Date();
   yest.setDate(yest.getDate() - 1);
   if (d.toDateString() === yest.toDateString()) {
-    return `yesterday at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    return `yesterday ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
   }
   return d.toLocaleDateString();
 }
