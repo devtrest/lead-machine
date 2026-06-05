@@ -651,14 +651,35 @@ function pickRoundRobin(
 
 // Per-sender transporter cache so we only build one nodemailer connection
 // per (user, gmail-address) pair across the worker's lifetime.
+//
+// Tunings against the "Connection timeout" failure mode we hit when Gmail
+// throttles the IP:
+//   - port 587 + STARTTLS instead of 465 + implicit TLS. Same protocol; 587
+//     is the more universally-routed of the two and we've seen it stay open
+//     when 465 silently drops.
+//   - explicit timeouts so we fail in ~25s instead of waiting the default
+//     60s. Faster fail = faster retry on next tick = shorter outage window.
+//   - pool:true keeps an open connection across sends for the same sender,
+//     which avoids repeated handshakes that Gmail can rate-limit.
+//   - on error, we EVICT the cached transporter so the next send for that
+//     sender builds a fresh one — protects against a wedged socket sticking
+//     around forever.
 const transporterCache = new Map<string, Transporter>();
+
 function transporterFor(sender: Sender): Transporter {
   let t = transporterCache.get(sender.id);
   if (t) return t;
   t = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false, // STARTTLS
+    requireTLS: true,
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 100,
+    connectionTimeout: 25_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
     auth: {
       user: sender.email,
       pass: sender.app_password.replace(/\s+/g, ""),
@@ -666,6 +687,18 @@ function transporterFor(sender: Sender): Transporter {
   });
   transporterCache.set(sender.id, t);
   return t;
+}
+
+function evictTransporter(senderId: string): void {
+  const t = transporterCache.get(senderId);
+  if (t) {
+    try {
+      t.close();
+    } catch {
+      /* ignore */
+    }
+    transporterCache.delete(senderId);
+  }
 }
 
 async function sendViaGmailWith(
@@ -684,6 +717,9 @@ async function sendViaGmailWith(
     });
     return { ok: true, id: info.messageId || `gmail-${Date.now()}` };
   } catch (err) {
+    // Wedged socket / handshake timeout? Drop the cached transporter so the
+    // next attempt builds a fresh connection.
+    evictTransporter(sender.id);
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Gmail SMTP error",
@@ -697,8 +733,15 @@ function getEnvGmailTransporter(): Transporter {
   if (envGmailTransporter) return envGmailTransporter;
   envGmailTransporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 100,
+    connectionTimeout: 25_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
     auth: {
       user: process.env.GMAIL_USER!,
       pass: process.env.GMAIL_APP_PASSWORD!.replace(/\s+/g, ""),
@@ -720,6 +763,12 @@ async function sendViaEnvGmail(args: SendArgs): Promise<SendOutcome> {
     });
     return { ok: true, id: info.messageId || `gmail-${Date.now()}` };
   } catch (err) {
+    try {
+      envGmailTransporter?.close();
+    } catch {
+      /* ignore */
+    }
+    envGmailTransporter = null;
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Gmail SMTP error",

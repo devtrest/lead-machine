@@ -101,10 +101,18 @@ export async function POST(req: Request) {
 
   // Build a one-shot nodemailer transporter (no caching — test sends are
   // infrequent and we don't want to leak transports per request).
+  //
+  // Port 587 / STARTTLS with explicit short timeouts: same hardening as the
+  // worker tick. Gmail occasionally rate-limits port 465 from cloud IPs and
+  // 587 is more reliable.
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    connectionTimeout: 25_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
     auth: {
       user: sender.email as string,
       pass: (sender.app_password as string).replace(/\s+/g, ""),
