@@ -36,28 +36,39 @@ export default async function CampaignDetailPage({
     ? campaign.scan_runs[0]
     : campaign.scan_runs;
 
-  const [stepsRes, prospectsRes, leadsRes] = await Promise.all([
-    supabase
-      .from("outreach_steps")
-      .select("id,step_order,delay_days,subject,body")
-      .eq("campaign_id", id)
-      .order("step_order", { ascending: true }),
-    supabase
-      .from("outreach_prospects")
-      .select(
-        "id,lead_id,email,status,current_step,next_send_at,last_sent_at,leads(name,category)"
-      )
-      .eq("campaign_id", id)
-      .order("added_at", { ascending: true }),
-    // All leads in the source niche that have an email — so user can add
-    // more prospects from the same niche.
-    supabase
-      .from("leads")
-      .select("id,name,category,lead_contacts(email)")
-      .eq("user_id", user.id)
-      .eq("scan_run_id", campaign.scan_run_id)
-      .order("created_at", { ascending: true }),
-  ]);
+  const [stepsRes, prospectsRes, leadsRes, sendersRes, campaignSendersRes] =
+    await Promise.all([
+      supabase
+        .from("outreach_steps")
+        .select("id,step_order,delay_days,subject,body")
+        .eq("campaign_id", id)
+        .order("step_order", { ascending: true }),
+      supabase
+        .from("outreach_prospects")
+        .select(
+          "id,lead_id,email,status,current_step,next_send_at,last_sent_at,leads(name,category)"
+        )
+        .eq("campaign_id", id)
+        .order("added_at", { ascending: true }),
+      // All leads in the source niche that have an email — so user can add
+      // more prospects from the same niche.
+      supabase
+        .from("leads")
+        .select("id,name,category,lead_contacts(email)")
+        .eq("user_id", user.id)
+        .eq("scan_run_id", campaign.scan_run_id)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("outreach_senders")
+        .select("id,email,display_name")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("outreach_campaign_senders")
+        .select("sender_id")
+        .eq("campaign_id", id),
+    ]);
 
   const steps = (stepsRes.data ?? []).map((s) => ({
     id: s.id as string,
@@ -211,6 +222,16 @@ export default async function CampaignDetailPage({
         prospects={prospects}
         candidateLeads={candidateLeads}
         stats={stats}
+        senders={
+          (sendersRes.data ?? []).map((s) => ({
+            id: s.id as string,
+            email: s.email as string,
+            display_name: (s.display_name as string | null) ?? null,
+          }))
+        }
+        attachedSenderIds={
+          (campaignSendersRes.data ?? []).map((r) => r.sender_id as string)
+        }
       />
     </div>
   );

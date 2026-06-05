@@ -18,6 +18,10 @@ import {
   CampaignStatsBar,
   type CampaignStats,
 } from "@/components/outreach/CampaignStatsBar";
+import {
+  TestSendCard,
+  type TestSender,
+} from "@/components/outreach/TestSendCard";
 
 export function CampaignDetail({
   campaignId,
@@ -27,6 +31,8 @@ export function CampaignDetail({
   prospects,
   candidateLeads,
   stats,
+  senders,
+  attachedSenderIds,
 }: {
   campaignId: string;
   initialName: string;
@@ -35,6 +41,8 @@ export function CampaignDetail({
   prospects: Prospect[];
   candidateLeads: CandidateLead[];
   stats: CampaignStats;
+  senders: TestSender[];
+  attachedSenderIds: string[];
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -192,6 +200,14 @@ export function CampaignDetail({
       </div>
 
       <CampaignStatsBar stats={stats} />
+
+      <TestSendCard
+        senders={senders}
+        defaultSenderId={attachedSenderIds[0] ?? senders[0]?.id ?? null}
+        subject={steps[0]?.subject ?? ""}
+        body={steps[0]?.body ?? ""}
+        helpText="Send a copy of Step 1 to any inbox to preview what prospects will receive. Useful after editing the sequence."
+      />
 
       <SequenceEditor
         campaignId={campaignId}

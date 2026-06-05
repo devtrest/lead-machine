@@ -21,6 +21,7 @@ import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { EMAIL_TEMPLATES, getTemplate } from "@/lib/email-templates";
+import { TestSendCard } from "@/components/outreach/TestSendCard";
 
 export type ProspectList = {
   id: string;
@@ -189,6 +190,8 @@ export function CampaignWizard({
               setSelectedSenderIds={setSelectedSenderIds}
               dailyLimit={dailyLimit}
               setDailyLimit={setDailyLimit}
+              firstStepSubject={sequence[0]?.subject ?? ""}
+              firstStepBody={sequence[0]?.body ?? ""}
               summary={{
                 name,
                 listsCount: selectedListIds.size,
@@ -583,6 +586,8 @@ function StepSendersAndStart({
   setSelectedSenderIds,
   dailyLimit,
   setDailyLimit,
+  firstStepSubject,
+  firstStepBody,
   summary,
 }: {
   senders: WizardSender[];
@@ -590,6 +595,8 @@ function StepSendersAndStart({
   setSelectedSenderIds: (s: Set<string>) => void;
   dailyLimit: number;
   setDailyLimit: (v: number) => void;
+  firstStepSubject: string;
+  firstStepBody: string;
   summary: {
     name: string;
     listsCount: number;
@@ -733,6 +740,20 @@ function StepSendersAndStart({
           </ul>
         )}
       </div>
+
+      <TestSendCard
+        senders={senders.map((s) => ({
+          id: s.id,
+          email: s.email,
+          display_name: s.display_name,
+        }))}
+        defaultSenderId={
+          Array.from(selectedSenderIds)[0] ?? senders[0]?.id ?? null
+        }
+        subject={firstStepSubject}
+        body={firstStepBody}
+        helpText="Send a copy of Step 1 to your own inbox before launch. Uses the same Gmail sender the autopilot will use."
+      />
 
       <div className="surface-card space-y-3 p-5">
         <h2 className="text-base font-semibold text-[var(--ink-strong)]">
