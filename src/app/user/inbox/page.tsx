@@ -3,6 +3,7 @@ import { Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { UniboxList } from "@/components/outreach/UniboxList";
 import { InboxCheckButton } from "@/components/outreach/InboxCheckButton";
+import { ConnectedInboxesStrip } from "@/components/outreach/ConnectedInboxesStrip";
 
 export const dynamic = "force-dynamic";
 
@@ -33,16 +34,27 @@ export default async function InboxPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: repliesRaw } = await supabase
-    .from("outreach_replies")
-    .select(
-      "id,from_email,from_name,subject,snippet,received_at,read_at,prospect_id,campaign_id,lead_id,outreach_campaigns(name),leads(name,category)"
-    )
-    .eq("user_id", user!.id)
-    .order("received_at", { ascending: false })
-    .limit(200);
+  const [repliesRes, sendersRes] = await Promise.all([
+    supabase
+      .from("outreach_replies")
+      .select(
+        "id,sender_id,from_email,from_name,subject,snippet,received_at,read_at,prospect_id,campaign_id,lead_id,outreach_campaigns(name),leads(name,category)"
+      )
+      .eq("user_id", user!.id)
+      .order("received_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("outreach_senders")
+      .select(
+        "id,email,display_name,status,last_inbox_check_at,last_error"
+      )
+      .eq("user_id", user!.id)
+      .order("created_at", { ascending: true }),
+  ]);
+  const repliesRaw = repliesRes.data;
+  const sendersRaw = sendersRes.data ?? [];
 
-  const replies = ((repliesRaw ?? []) as ReplyRow[]).map((r) => {
+  const replies = ((repliesRaw ?? []) as (ReplyRow & { sender_id: string | null })[]).map((r) => {
     const campaign = Array.isArray(r.outreach_campaigns)
       ? r.outreach_campaigns[0] ?? null
       : r.outreach_campaigns;
@@ -60,10 +72,36 @@ export default async function InboxPage() {
       campaignName: campaign?.name ?? null,
       leadName: lead?.name ?? null,
       leadCategory: lead?.category ?? null,
+      senderId: r.sender_id ?? null,
     };
   });
 
   const unreadCount = replies.filter((r) => !r.readAt).length;
+
+  // Bucket reply counts per sender so the strip can show "3 replies" badges.
+  const repliesBySender = new Map<string, number>();
+  for (const r of replies) {
+    if (!r.senderId) continue;
+    repliesBySender.set(r.senderId, (repliesBySender.get(r.senderId) ?? 0) + 1);
+  }
+
+  type SenderRow = {
+    id: string;
+    email: string;
+    display_name: string | null;
+    status: string;
+    last_inbox_check_at: string | null;
+    last_error: string | null;
+  };
+  const senders = (sendersRaw as SenderRow[]).map((s) => ({
+    id: s.id,
+    email: s.email,
+    displayName: s.display_name,
+    status: s.status,
+    lastCheckedAt: s.last_inbox_check_at,
+    lastError: s.last_error,
+    replyCount: repliesBySender.get(s.id) ?? 0,
+  }));
 
   return (
     <div className="space-y-6">
@@ -87,6 +125,8 @@ export default async function InboxPage() {
           <InboxCheckButton />
         </div>
       </div>
+
+      <ConnectedInboxesStrip senders={senders} />
 
       {replies.length === 0 ? (
         <div className="surface-card p-10 text-center">
