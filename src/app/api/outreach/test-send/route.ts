@@ -124,9 +124,24 @@ export async function POST(req: Request) {
       ...(replyTo ? { replyTo } : {}),
     });
 
-    // Log to email_sends for visibility in the campaign-detail stats? No —
-    // tests don't belong to a campaign and would skew per-campaign analytics.
-    // Keep test sends out of email_sends entirely.
+    // Log to email_sends with campaign_id=null so the IMAP reply matcher has
+    // something to anchor against when a reply comes back. Campaign analytics
+    // stay clean because we filter by campaign_id when computing per-campaign
+    // stats.
+    await supabase.from("email_sends").insert({
+      user_id: user.id,
+      lead_id: null,
+      scan_run_id: null,
+      campaign_id: null,
+      step_order: 0,
+      recipient_email: to,
+      subject: `[TEST] ${renderedSubject}`,
+      body: renderedBody,
+      status: "sent",
+      provider_message_id: info.messageId ?? null,
+      attachment_count: 0,
+      sent_at: new Date().toISOString(),
+    });
 
     return NextResponse.json({
       ok: true,

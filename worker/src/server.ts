@@ -125,6 +125,20 @@ app.post("/outreach/tick", requireAuth, async (_req, res) => {
   }
 });
 
+// Manual inbox poll — triggered from the Inbox page's "Check now" button so
+// users don't wait up to 10 minutes for the next scheduled IMAP poll.
+app.post("/inbox/check", requireAuth, async (_req, res) => {
+  try {
+    const result = await runInboxCheck();
+    res.json(result);
+  } catch (err) {
+    console.error("[/inbox/check]", err);
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : "Inbox check failed" });
+  }
+});
+
 const PORT = Number(process.env.PORT) || 8080;
 app.listen(PORT, () => {
   console.log(`[lead-machine-worker] listening on :${PORT}`);

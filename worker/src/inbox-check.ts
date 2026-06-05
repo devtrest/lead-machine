@@ -181,9 +181,30 @@ async function ingestMessage(
   const messageId = env.messageId ?? null;
   const receivedAt = env.date ?? new Date();
 
-  // Try to match this incoming email to one of our outreach prospects
-  // for the same user. Only count it as a reply if the from address is one
-  // we've actually emailed in a campaign.
+  // Match strategy (in order):
+  //   1. Did we send to this address from this user? Anything in email_sends
+  //      with recipient_email = fromEmail counts — covers real campaign
+  //      sends, follow-ups, test sends, anything that left from us. If so:
+  //      it's a reply, record it.
+  //   2. If we ALSO have a prospect row with this email, link the reply to
+  //      the prospect/lead/campaign so the autopilot stops sending
+  //      follow-ups.
+  //
+  // Replies from random addresses we never emailed (newsletters, colleagues,
+  // etc.) get skipped.
+
+  const { data: priorSend } = await supabase
+    .from("email_sends")
+    .select("id,campaign_id,lead_id")
+    .eq("user_id", sender.user_id)
+    .eq("recipient_email", fromEmail)
+    .limit(1)
+    .maybeSingle();
+
+  if (!priorSend) {
+    return false;
+  }
+
   const { data: prospect } = await supabase
     .from("outreach_prospects")
     .select("id,lead_id,campaign_id,outreach_campaigns!inner(user_id)")
@@ -191,25 +212,19 @@ async function ingestMessage(
     .eq("outreach_campaigns.user_id", sender.user_id)
     .maybeSingle();
 
-  if (!prospect) {
-    // Not a campaign reply — could be a personal message, a newsletter,
-    // a colleague, etc. Skip without recording.
-    return false;
-  }
-
   const snippet = extractSnippet(msg);
 
-  // Idempotent insert — the unique (sender_id, message_id) constraint
-  // silently rejects duplicates if we re-poll.
+  // Idempotent insert — unique (sender_id, message_id) rejects duplicates
+  // if we re-poll.
   const { error: insErr } = await supabase
     .from("outreach_replies")
     .upsert(
       {
         user_id: sender.user_id,
         sender_id: sender.id,
-        prospect_id: prospect.id,
-        lead_id: prospect.lead_id,
-        campaign_id: prospect.campaign_id,
+        prospect_id: prospect?.id ?? null,
+        lead_id: prospect?.lead_id ?? priorSend.lead_id ?? null,
+        campaign_id: prospect?.campaign_id ?? priorSend.campaign_id ?? null,
         message_id: messageId,
         from_email: fromEmail,
         from_name: fromName,
@@ -225,14 +240,15 @@ async function ingestMessage(
     return false;
   }
 
-  // Mark the prospect as replied so the tick stops sending follow-ups.
-  // Only flip if not already terminal (replied/bounced/completed) so we
-  // don't undo a manual override.
-  await supabase
-    .from("outreach_prospects")
-    .update({ status: "replied", next_send_at: null })
-    .eq("id", prospect.id)
-    .in("status", ["pending", "in_progress"]);
+  // If a campaign prospect exists for this address, mark it replied so the
+  // tick stops sending follow-ups. Only flip non-terminal statuses.
+  if (prospect) {
+    await supabase
+      .from("outreach_prospects")
+      .update({ status: "replied", next_send_at: null })
+      .eq("id", prospect.id)
+      .in("status", ["pending", "in_progress"]);
+  }
 
   return true;
 }

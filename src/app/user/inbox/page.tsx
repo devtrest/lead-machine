@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { UniboxList } from "@/components/outreach/UniboxList";
+import { InboxCheckButton } from "@/components/outreach/InboxCheckButton";
 
 export const dynamic = "force-dynamic";
 
@@ -77,11 +78,14 @@ export default async function InboxPage() {
             as replied so follow-ups stop.
           </p>
         </div>
-        {unreadCount > 0 ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-50)] px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)]">
-            {unreadCount} unread
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-50)] px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)]">
+              {unreadCount} unread
+            </span>
+          ) : null}
+          <InboxCheckButton />
+        </div>
       </div>
 
       {replies.length === 0 ? (
