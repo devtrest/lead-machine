@@ -32,12 +32,22 @@ export function planForPriceId(priceId: string): string | null {
   return null;
 }
 
-/** How many credits each lifetime plan grants on purchase. */
+/** How many credits each lifetime plan grants on purchase.
+ *  1 credit = 1 scraped lead OR 1 initial outreach email (follow-ups free). */
 export const PLAN_CREDIT_GRANT: Record<string, number> = {
-  starter: 250,
-  premium: 1000,
-  pro: 5000,
-  enterprise: 0,
+  starter: 3_000,
+  premium: 15_000,
+  pro: 100_000,
+  enterprise: 0, // unmetered
+};
+
+/** Display price for each plan — used for client-side display and as a
+ *  source of truth so we don't have to keep two files in sync. */
+export const PLAN_PRICE_USD: Record<string, string> = {
+  starter: "$49",
+  premium: "$149",
+  pro: "$499",
+  enterprise: "Custom",
 };
 
 export function isStripeConfigured(): boolean {

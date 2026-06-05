@@ -56,6 +56,32 @@ export async function POST(_req: Request, ctx: { params: Params }) {
     );
   }
 
+  // Charge 1 credit per prospect that will receive the initial email.
+  // Follow-ups (step 2+) are free for every plan. Enterprise is unmetered.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .maybeSingle();
+  const plan = (profile?.plan as string | null) ?? "starter";
+  if (plan !== "enterprise") {
+    const { data: reserved, error: rpcErr } = await supabase.rpc(
+      "reserve_search_credits",
+      { amount: prospectCount }
+    );
+    if (rpcErr) {
+      return NextResponse.json({ error: rpcErr.message }, { status: 400 });
+    }
+    if (!reserved) {
+      return NextResponse.json(
+        {
+          error: `Not enough credits. Starting this campaign needs ${prospectCount} (one per prospect for the initial email). Follow-ups are free.`,
+        },
+        { status: 402 }
+      );
+    }
+  }
+
   const nowIso = new Date().toISOString();
 
   await supabase

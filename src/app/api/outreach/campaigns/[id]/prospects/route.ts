@@ -26,10 +26,13 @@ export async function POST(req: Request, ctx: { params: Params }) {
     return NextResponse.json({ error: "leadIds required" }, { status: 400 });
   }
 
-  // Verify campaign ownership.
+  // Verify campaign ownership + status. Active campaigns charge credits
+  // when prospects are added (one credit per prospect for the initial
+  // email). Drafts and paused campaigns are free — the credit reservation
+  // happens at Start time instead.
   const { data: campaign } = await supabase
     .from("outreach_campaigns")
-    .select("id")
+    .select("id,status")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -64,8 +67,46 @@ export async function POST(req: Request, ctx: { params: Params }) {
     return NextResponse.json({ added: 0, skipped: leadIds.length });
   }
 
-  // upsert via insert + onConflict — the (campaign_id, lead_id) unique
-  // constraint silently rejects duplicates.
+  // De-dup against rows already in the DB so we only charge for genuinely
+  // new prospects. Without this, adding the same lead twice (which the
+  // unique constraint already silently rejects) would still deduct credits.
+  const { data: alreadyIn } = await supabase
+    .from("outreach_prospects")
+    .select("lead_id")
+    .eq("campaign_id", id)
+    .in(
+      "lead_id",
+      rows.map((r) => r.lead_id)
+    );
+  const existing = new Set((alreadyIn ?? []).map((r) => r.lead_id as string));
+  const fresh = rows.filter((r) => !existing.has(r.lead_id));
+
+  if (campaign.status === "active" && fresh.length > 0) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .maybeSingle();
+    const plan = (profile?.plan as string | null) ?? "starter";
+    if (plan !== "enterprise") {
+      const { data: reserved, error: rpcErr } = await supabase.rpc(
+        "reserve_search_credits",
+        { amount: fresh.length }
+      );
+      if (rpcErr) {
+        return NextResponse.json({ error: rpcErr.message }, { status: 400 });
+      }
+      if (!reserved) {
+        return NextResponse.json(
+          {
+            error: `Adding ${fresh.length} prospect${fresh.length === 1 ? "" : "s"} to a running campaign costs ${fresh.length} credit${fresh.length === 1 ? "" : "s"}. Top up on the Billing page.`,
+          },
+          { status: 402 }
+        );
+      }
+    }
+  }
+
   const { error } = await supabase
     .from("outreach_prospects")
     .upsert(rows, { onConflict: "campaign_id,lead_id", ignoreDuplicates: true });
@@ -73,7 +114,8 @@ export async function POST(req: Request, ctx: { params: Params }) {
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
   return NextResponse.json({
-    added: rows.length,
-    skipped: leadIds.length - rows.length,
+    added: fresh.length,
+    skipped: leadIds.length - fresh.length,
+    charged: campaign.status === "active" ? fresh.length : 0,
   });
 }

@@ -2,6 +2,12 @@ import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { createClient } from "@/lib/supabase/server";
 
+// Always re-fetch the profile (credits, plan, etc.) on every navigation so
+// the topbar credit balance updates the instant a scrape reserves credits
+// or an outreach campaign starts. Without this, Next.js's RSC cache can hold
+// the layout result and display a stale balance until the user hard-refreshes.
+export const dynamic = "force-dynamic";
+
 export default async function UserLayout({
   children,
 }: {

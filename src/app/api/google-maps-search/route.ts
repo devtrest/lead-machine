@@ -9,16 +9,18 @@ import { expandKeyword } from "@/lib/keyword-cluster";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
+// Per-request leads cap (not the plan's lifetime grant — that's enforced
+// separately by reserve_search_credits running against the user's balance).
 function ceilingForPlan(plan: string | null | undefined) {
   switch (plan) {
     case "premium":
-      return 250;
+      return 2_000;
     case "pro":
-      return 1000;
+      return 5_000;
     case "enterprise":
-      return 5000;
+      return 10_000;
     default:
-      return 50;
+      return 500;
   }
 }
 

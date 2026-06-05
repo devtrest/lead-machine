@@ -193,6 +193,37 @@ export async function POST(req: Request) {
 
   // ---- 5. Start if requested ----
   if (startNow && prospectRows.length > 0) {
+    // Charge 1 credit per prospect for the initial email. Follow-ups are
+    // free on every plan. Enterprise is unmetered. If the user is short,
+    // the campaign stays as a draft so they can top up and start later.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .maybeSingle();
+    const plan = (profile?.plan as string | null) ?? "starter";
+    if (plan !== "enterprise") {
+      const { data: reserved, error: rpcErr } = await supabase.rpc(
+        "reserve_search_credits",
+        { amount: prospectRows.length }
+      );
+      if (rpcErr) {
+        return NextResponse.json({ error: rpcErr.message }, { status: 400 });
+      }
+      if (!reserved) {
+        return NextResponse.json(
+          {
+            id: campaignId,
+            prospects: prospectRows.length,
+            steps: steps.length,
+            started: false,
+            warning: `Saved as draft. Starting needs ${prospectRows.length} credits (one per prospect for the initial email). Follow-ups are free.`,
+          },
+          { status: 402 }
+        );
+      }
+    }
+
     const nowIso = new Date().toISOString();
     await supabase
       .from("outreach_campaigns")
