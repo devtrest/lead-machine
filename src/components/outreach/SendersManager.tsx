@@ -182,7 +182,7 @@ export function SendersManager({
                   <StatusDot status={s.status} />
                 </div>
                 <div className="mt-0.5 text-xs text-[var(--ink-muted)]">
-                  {s.sends_today} / {s.daily_limit} today
+                  {s.sends_today} sent today
                   {s.last_error ? (
                     <>
                       {" · "}
