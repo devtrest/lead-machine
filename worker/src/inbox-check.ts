@@ -15,6 +15,7 @@
 // account so we only fetch messages newer than that.
 
 import { ImapFlow, type FetchMessageObject } from "imapflow";
+import { simpleParser } from "mailparser";
 import { supabase } from "./db.js";
 
 type SenderRow = {
@@ -212,7 +213,7 @@ async function ingestMessage(
     .eq("outreach_campaigns.user_id", sender.user_id)
     .maybeSingle();
 
-  const snippet = extractSnippet(msg);
+  const snippet = await extractSnippet(msg);
 
   // Idempotent insert — unique (sender_id, message_id) rejects duplicates
   // if we re-poll.
@@ -253,17 +254,45 @@ async function ingestMessage(
   return true;
 }
 
-function extractSnippet(msg: FetchMessageObject): string | null {
+// Pulls a clean ~500-char preview from the raw message source.
+// mailparser handles MIME parsing, quoted-printable / base64 decoding,
+// charset conversion, and picking the text/plain part of multipart messages.
+// On top of that we strip the "On [date] [name] wrote:" attribution and the
+// quoted lines that follow it (everything prefixed with ">") so the snippet
+// shows only what the replier actually wrote, not the original message we
+// sent them.
+async function extractSnippet(
+  msg: FetchMessageObject
+): Promise<string | null> {
   if (!msg.source) return null;
-  const text = msg.source.toString("utf-8", 0, Math.min(msg.source.length, 8192));
-  // Strip headers — first blank line marks header/body boundary in RFC 822.
-  const blank = text.indexOf("\r\n\r\n");
-  const body = blank >= 0 ? text.slice(blank + 4) : text;
-  // De-MIME-escape minimally + clean.
-  return body
-    .replace(/=\r?\n/g, "")
-    .replace(/=[0-9A-F]{2}/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 500);
+  let text: string;
+  try {
+    const parsed = await simpleParser(msg.source);
+    const htmlText =
+      typeof parsed.html === "string"
+        ? parsed.html.replace(/<[^>]+>/g, " ")
+        : null;
+    text = parsed.text ?? htmlText ?? "";
+  } catch {
+    return null;
+  }
+  if (!text) return null;
+
+  // Cut at the "On [date], [name] <email> wrote:" attribution line. Matches
+  // Gmail/Outlook/Apple Mail conventions.
+  const attribution = text.match(
+    /\n+On\s.{0,200}?wrote:\s*\n/i
+  );
+  if (attribution && attribution.index !== undefined) {
+    text = text.slice(0, attribution.index);
+  }
+
+  // Strip quoted lines (anything starting with ">") line-by-line.
+  text = text
+    .split(/\r?\n/)
+    .filter((line) => !line.trimStart().startsWith(">"))
+    .join("\n");
+
+  // Final normalize.
+  return text.replace(/\s+/g, " ").trim().slice(0, 500) || null;
 }
