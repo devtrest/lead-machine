@@ -385,10 +385,9 @@ async function tick(): Promise<TickResult> {
       `[outreach-tick] sending step ${nextStepOrder} → ${p.email} (campaign "${campaign.name}")`
     );
 
-    // Pick the sender with the most daily-limit headroom. If none have any
-    // headroom, fall back to the env-var sender (legacy) or log if neither
-    // exists.
-    const pickedSender = pickSenderWithHeadroom(campaign.senders);
+    // Round-robin across the campaign's connected senders so usage stays
+    // balanced across accounts. Skips senders at Gmail's daily ceiling.
+    const pickedSender = pickRoundRobin(campaign.id, campaign.senders);
     if (!pickedSender && campaign.senders.length > 0) {
       console.warn(
         `[outreach-tick] all senders for "${campaign.name}" at daily limit, deferring`
@@ -625,20 +624,29 @@ async function sendEmail(args: SendArgs): Promise<SendOutcome> {
   return { ok: true, id: "console-log-" + Date.now() };
 }
 
-// Pick the active sender with the most remaining headroom today. Spreads
-// sends evenly across multiple connected accounts and never overflows the
-// per-account daily limit.
-function pickSenderWithHeadroom(senders: Sender[]): Sender | null {
-  let best: Sender | null = null;
-  let bestRemaining = -1;
-  for (const s of senders) {
-    const remaining = s.daily_limit - s.sends_today;
-    if (remaining > 0 && remaining > bestRemaining) {
-      best = s;
-      bestRemaining = remaining;
+// Round-robin sender rotation. Each campaign keeps an in-memory cursor that
+// advances once per send so consecutive sends cycle through senders evenly.
+// Senders that have hit their per-account daily ceiling are skipped (rare —
+// the ceiling is Gmail's ~500/day, not a user-set cap).
+const rrCursor = new Map<string, number>();
+
+function pickRoundRobin(
+  campaignId: string,
+  senders: Sender[]
+): Sender | null {
+  if (senders.length === 0) return null;
+  let cursor = rrCursor.get(campaignId) ?? 0;
+  // Walk at most senders.length positions before giving up — covers the case
+  // where every sender is at daily cap.
+  for (let i = 0; i < senders.length; i++) {
+    const idx = (cursor + i) % senders.length;
+    const candidate = senders[idx];
+    if (candidate.daily_limit - candidate.sends_today > 0) {
+      rrCursor.set(campaignId, (idx + 1) % senders.length);
+      return candidate;
     }
   }
-  return best;
+  return null;
 }
 
 // Per-sender transporter cache so we only build one nodemailer connection

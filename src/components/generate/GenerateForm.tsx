@@ -252,6 +252,10 @@ export function GenerateForm() {
         total: (event.total as number) ?? 0,
         requested: target,
       });
+      // Refresh server-rendered values (credit balance in topbar, etc.) so
+      // the user sees the deducted credits immediately without a manual
+      // tab refresh.
+      router.refresh();
       return;
     }
     if (!phase) return;

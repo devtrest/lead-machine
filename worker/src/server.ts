@@ -6,6 +6,7 @@ import express, {
 import { runScrapeJob, type JobEvent } from "./scrape-job.js";
 import { supabase } from "./db.js";
 import { runOutreachTick } from "./outreach-tick.js";
+import { runInboxCheck } from "./inbox-check.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -128,10 +129,11 @@ const PORT = Number(process.env.PORT) || 8080;
 app.listen(PORT, () => {
   console.log(`[lead-machine-worker] listening on :${PORT}`);
 
-  // Background autopilot — fires every 15 min while the worker is up.
-  // First tick after 30 s of warmup so the server is reachable when Railway
-  // probes /health.
+  // Background autopilot — outreach tick every 15 min, inbox check every
+  // 10 min. Each guards against re-entry with its own running flag.
   const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+  const TEN_MIN_MS = 10 * 60 * 1000;
+
   setTimeout(() => {
     runOutreachTick().catch((err) =>
       console.error("[outreach-tick] initial run failed:", err)
@@ -142,4 +144,17 @@ app.listen(PORT, () => {
       );
     }, FIFTEEN_MIN_MS);
   }, 30_000);
+
+  // Inbox check starts 60s after boot (gives the outreach-tick room) and
+  // then runs every 10 min independently.
+  setTimeout(() => {
+    runInboxCheck().catch((err) =>
+      console.error("[inbox-check] initial run failed:", err)
+    );
+    setInterval(() => {
+      runInboxCheck().catch((err) =>
+        console.error("[inbox-check] interval run failed:", err)
+      );
+    }, TEN_MIN_MS);
+  }, 60_000);
 });
