@@ -18,6 +18,10 @@ type ReplyRow = {
   prospect_id: string | null;
   campaign_id: string | null;
   lead_id: string | null;
+  starred: boolean | null;
+  category: string | null;
+  archived_at: string | null;
+  notes: string | null;
   outreach_campaigns:
     | { name: string }
     | { name: string }[]
@@ -38,11 +42,11 @@ export default async function InboxPage() {
     supabase
       .from("outreach_replies")
       .select(
-        "id,sender_id,from_email,from_name,subject,snippet,received_at,read_at,prospect_id,campaign_id,lead_id,outreach_campaigns(name),leads(name,category)"
+        "id,sender_id,from_email,from_name,subject,snippet,received_at,read_at,prospect_id,campaign_id,lead_id,starred,category,archived_at,notes,outreach_campaigns(name),leads(name,category)"
       )
       .eq("user_id", user!.id)
       .order("received_at", { ascending: false })
-      .limit(200),
+      .limit(500),
     supabase
       .from("outreach_senders")
       .select(
@@ -73,6 +77,10 @@ export default async function InboxPage() {
       leadName: lead?.name ?? null,
       leadCategory: lead?.category ?? null,
       senderId: r.sender_id ?? null,
+      starred: Boolean(r.starred),
+      category: r.category,
+      archivedAt: r.archived_at,
+      notes: r.notes,
     };
   });
 
