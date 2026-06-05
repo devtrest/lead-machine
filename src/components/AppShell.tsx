@@ -19,6 +19,7 @@ import {
   Mail,
   AtSign,
   Inbox,
+  Activity,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initialsFor } from "@/lib/avatar";
@@ -33,6 +34,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/user", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { href: "/user/generate", label: "Generate", icon: <Sparkles className="h-4 w-4" /> },
+  { href: "/user/jobs", label: "Jobs", icon: <Activity className="h-4 w-4" /> },
   { href: "/user/leads", label: "Leads", icon: <Users className="h-4 w-4" /> },
   { href: "/user/campaigns", label: "Campaigns", icon: <Layers className="h-4 w-4" /> },
   { href: "/user/billing", label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
