@@ -13,6 +13,7 @@ import {
   Sparkles,
   Radar,
   Globe,
+  Play,
 } from "lucide-react";
 
 export type JobRun = {
@@ -270,14 +271,11 @@ function RunCard({
     new Date(run.finished_at ?? Date.now()).getTime() -
     new Date(run.started_at).getTime();
 
-  const iconTile = {
-    running:
-      "bg-gradient-to-br from-[var(--brand-500)] to-[var(--sky-500)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.30)]",
-    completed:
-      "bg-gradient-to-br from-[var(--success-500)] to-[var(--success-600)] text-white shadow-[0_4px_14px_rgba(34,197,94,0.25)]",
-    failed:
-      "bg-gradient-to-br from-[var(--danger-500)] to-[var(--danger-600)] text-white shadow-[0_4px_14px_rgba(239,68,68,0.25)]",
-  }[variant];
+  // Media-player style: solid brand circle for every state, like a play
+  // button on a video. Non-interactive — just a visual identity for the run.
+  // The icon inside varies by state.
+  const iconTile =
+    "bg-[var(--brand-600)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.35)] ring-4 ring-[var(--brand-100)]";
 
   const cardRing =
     variant === "running"
@@ -298,12 +296,18 @@ function RunCard({
         <div className="space-y-3">
           <div className="flex items-start gap-3">
             <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconTile}`}
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${iconTile}`}
             >
               {variant === "running" ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : variant === "completed" ? (
-                <CheckCircle2 className="h-5 w-5" />
+                // Slight right-translate so the play triangle visually centers
+                // inside the circular tile.
+                <Play
+                  className="h-5 w-5 translate-x-[1px]"
+                  fill="currentColor"
+                  strokeWidth={0}
+                />
               ) : (
                 <XCircle className="h-5 w-5" />
               )}
@@ -345,9 +349,7 @@ function RunCard({
                 className={`text-sm font-bold tabular-nums ${
                   variant === "failed"
                     ? "text-[var(--danger-700)]"
-                    : variant === "completed"
-                      ? "text-[var(--success-700)]"
-                      : "text-[var(--brand-700)]"
+                    : "text-[var(--brand-700)]"
                 }`}
               >
                 {pct}%
@@ -388,12 +390,13 @@ function ProgressBar({
   pct: number;
   variant: "running" | "completed" | "failed";
 }) {
-  const fillClass = {
-    running: "bg-gradient-to-r from-[var(--brand-500)] to-[var(--sky-500)]",
-    completed:
-      "bg-gradient-to-r from-[var(--success-500)] to-[var(--success-600)]",
-    failed: "bg-gradient-to-r from-[var(--danger-500)] to-[var(--danger-600)]",
-  }[variant];
+  // Solid brand blue across all states for visual consistency. Failed runs
+  // overlay a subtle danger tint via the icon + status pill — the bar itself
+  // stays brand so the page reads cohesively top-to-bottom.
+  const fillClass =
+    variant === "failed"
+      ? "bg-[var(--danger-500)]"
+      : "bg-[var(--brand-600)]";
   return (
     <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
       <motion.div
@@ -403,9 +406,8 @@ function ProgressBar({
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       >
         {variant === "running" ? (
-          // Soft shimmer band travels across the fill while running.
           <motion.span
-            className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/50 to-transparent"
+            className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
             initial={{ x: "-100%" }}
             animate={{ x: "300%" }}
             transition={{
