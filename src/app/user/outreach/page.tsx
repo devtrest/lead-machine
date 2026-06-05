@@ -18,6 +18,8 @@ type CampaignSummary = {
   contacted: number;
   replied: number;
   bounced: number;
+  opens: number;
+  contactedSends: number;
   sentLast7Days: number[];
 };
 
@@ -64,38 +66,50 @@ export default async function OutreachListPage() {
     }
   }
 
-  // 3. Per-campaign send activity (last 7 days). One query, bucket in JS.
+  // 3. Per-campaign send activity (last 7 days) + per-campaign open counts.
+  //    One pull of email_sends does both: bucket sends by day for sparkline,
+  //    count rows whose first_opened_at is non-null for the open metric.
   const sevenDaysAgo = new Date(
     Date.now() - 7 * 24 * 60 * 60 * 1000
   ).toISOString();
   const sendBuckets = new Map<string, number[]>(); // campaign_id -> 7-day buckets
+  const opensByCampaign = new Map<string, number>(); // campaign_id -> opens
+  const contactedByCampaign = new Map<string, number>(); // campaign_id -> sends
   if (campaignIds.length > 0) {
     const { data: sends } = await supabase
       .from("email_sends")
-      .select("campaign_id,sent_at,status")
+      .select("campaign_id,sent_at,status,first_opened_at")
       .in("campaign_id", campaignIds)
-      .eq("status", "sent")
-      .gte("sent_at", sevenDaysAgo);
+      .eq("status", "sent");
 
     for (const cid of campaignIds) {
       sendBuckets.set(cid, new Array(7).fill(0));
     }
     const startMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const sevenAgoMs = new Date(sevenDaysAgo).getTime();
     for (const s of sends ?? []) {
-      if (!s.sent_at) continue;
       const cid = s.campaign_id as string;
-      const dayIdx = Math.min(
-        6,
-        Math.max(
-          0,
-          Math.floor(
-            (new Date(s.sent_at as string).getTime() - startMs) /
-              (24 * 60 * 60 * 1000)
-          )
-        )
+      contactedByCampaign.set(
+        cid,
+        (contactedByCampaign.get(cid) ?? 0) + 1
       );
-      const bucket = sendBuckets.get(cid);
-      if (bucket) bucket[dayIdx] += 1;
+      if (s.first_opened_at) {
+        opensByCampaign.set(cid, (opensByCampaign.get(cid) ?? 0) + 1);
+      }
+      if (s.sent_at) {
+        const sentMs = new Date(s.sent_at as string).getTime();
+        if (sentMs >= sevenAgoMs) {
+          const dayIdx = Math.min(
+            6,
+            Math.max(
+              0,
+              Math.floor((sentMs - startMs) / (24 * 60 * 60 * 1000))
+            )
+          );
+          const bucket = sendBuckets.get(cid);
+          if (bucket) bucket[dayIdx] += 1;
+        }
+      }
     }
   }
 
@@ -122,6 +136,8 @@ export default async function OutreachListPage() {
       contacted: stats.contacted,
       replied: stats.replied,
       bounced: stats.bounced,
+      opens: opensByCampaign.get(c.id) ?? 0,
+      contactedSends: contactedByCampaign.get(c.id) ?? 0,
       sentLast7Days: sendBuckets.get(c.id) ?? new Array(7).fill(0),
     };
   });
@@ -131,6 +147,11 @@ export default async function OutreachListPage() {
   const totalProspects = campaigns.reduce((s, c) => s + c.prospects, 0);
   const totalContacted = campaigns.reduce((s, c) => s + c.contacted, 0);
   const totalReplied = campaigns.reduce((s, c) => s + c.replied, 0);
+  const totalOpens = campaigns.reduce((s, c) => s + c.opens, 0);
+  const totalContactedSends = campaigns.reduce(
+    (s, c) => s + c.contactedSends,
+    0
+  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -144,6 +165,10 @@ export default async function OutreachListPage() {
   const replyRate =
     totalContacted > 0
       ? Math.round((totalReplied / totalContacted) * 100)
+      : 0;
+  const openRate =
+    totalContactedSends > 0
+      ? Math.round((totalOpens / totalContactedSends) * 100)
       : 0;
 
   const heroStats = [
@@ -167,6 +192,13 @@ export default async function OutreachListPage() {
       iconKey: "users" as const,
       accent: "var(--ink-strong)",
       bg: "var(--surface-sunken)",
+    },
+    {
+      label: "Open rate",
+      value: `${openRate}%`,
+      iconKey: "eye" as const,
+      accent: "var(--sky-700)",
+      bg: "var(--sky-50)",
     },
     {
       label: "Reply rate",

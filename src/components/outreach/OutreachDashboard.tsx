@@ -10,13 +10,20 @@ import {
   Users,
   TrendingUp,
   Activity,
+  Eye,
   type LucideIcon,
 } from "lucide-react";
 import { StatusBadge } from "@/components/outreach/StatusBadge";
 
 // String keys instead of function references so server components can pass
 // these props across the server→client boundary without serialization issues.
-export type IconKey = "activity" | "send" | "users" | "trending-up" | "mail";
+export type IconKey =
+  | "activity"
+  | "send"
+  | "users"
+  | "trending-up"
+  | "mail"
+  | "eye";
 
 const ICON_MAP: Record<IconKey, LucideIcon> = {
   activity: Activity,
@@ -24,6 +31,7 @@ const ICON_MAP: Record<IconKey, LucideIcon> = {
   users: Users,
   "trending-up": TrendingUp,
   mail: Mail,
+  eye: Eye,
 };
 
 type HeroStat = {
@@ -45,6 +53,8 @@ export type CampaignSummary = {
   contacted: number;
   replied: number;
   bounced: number;
+  opens: number;
+  contactedSends: number;
   sentLast7Days: number[];
 };
 
@@ -66,7 +76,7 @@ export function OutreachDashboard({
           hidden: {},
           show: { transition: { staggerChildren: 0.06 } },
         }}
-        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
       >
         {heroStats.map((stat) => {
           const Icon = ICON_MAP[stat.iconKey];
@@ -137,6 +147,9 @@ export function OutreachDashboard({
                     Contacted
                   </th>
                   <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
+                    Opened
+                  </th>
+                  <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
                     Replied
                   </th>
                   <th className="px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
@@ -196,6 +209,16 @@ function CampaignRow({
       </td>
       <td className="px-5 py-3.5 text-right text-sm font-semibold tabular-nums text-[var(--ink-strong)]">
         {campaign.contacted}
+      </td>
+      <td className="px-5 py-3.5 text-right">
+        <div className="text-sm font-semibold tabular-nums text-[var(--sky-700)]">
+          {campaign.opens}
+        </div>
+        {campaign.contactedSends > 0 ? (
+          <div className="text-[10px] text-[var(--ink-subtle)]">
+            {Math.round((campaign.opens / campaign.contactedSends) * 100)}%
+          </div>
+        ) : null}
       </td>
       <td className="px-5 py-3.5 text-right text-sm font-semibold tabular-nums text-[var(--success-700)]">
         {campaign.replied}

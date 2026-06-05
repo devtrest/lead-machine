@@ -9,6 +9,7 @@ import {
   Trash2,
   UserPlus,
   X,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
@@ -22,6 +23,7 @@ export type Prospect = {
   lastSentAt: string | null;
   leadName: string;
   leadCategory: string | null;
+  opened: boolean;
 };
 
 export type CandidateLead = {
@@ -130,6 +132,15 @@ export function ProspectsManager({
                     {p.leadName}
                   </span>
                   <ProspectStatusPill status={p.status} step={p.currentStep} />
+                  {p.opened ? (
+                    <span
+                      title="Tracking pixel fired — recipient opened at least one email"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--sky-50)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--sky-700)]"
+                    >
+                      <Eye className="h-2.5 w-2.5" />
+                      Opened
+                    </span>
+                  ) : null}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
                   {p.email}

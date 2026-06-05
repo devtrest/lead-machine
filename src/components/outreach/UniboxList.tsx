@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Mail,
-  CheckCheck,
   ExternalLink,
   ShieldCheck,
   Reply as ReplyIcon,

@@ -78,6 +78,20 @@ export default async function CampaignDetailPage({
     body: s.body as string,
   }));
 
+  // Lead-ids in this campaign that have at least one opened send. Used to
+  // surface an "opened" badge on the prospect row.
+  const { data: openedSends } = await supabase
+    .from("email_sends")
+    .select("lead_id")
+    .eq("campaign_id", id)
+    .eq("status", "sent")
+    .not("first_opened_at", "is", null);
+  const openedLeadIds = new Set(
+    (openedSends ?? [])
+      .map((r) => r.lead_id as string | null)
+      .filter((v): v is string => Boolean(v))
+  );
+
   type ProspectRow = {
     id: string;
     lead_id: string;
@@ -104,6 +118,7 @@ export default async function CampaignDetailPage({
       lastSentAt: row.last_sent_at,
       leadName: leadObj?.name ?? "(unknown lead)",
       leadCategory: leadObj?.category ?? null,
+      opened: openedLeadIds.has(row.lead_id),
     };
   });
 
