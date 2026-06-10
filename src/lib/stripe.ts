@@ -50,6 +50,20 @@ export const PLAN_PRICE_USD: Record<string, string> = {
   enterprise: "Custom",
 };
 
+/** Plan price in CENTS — used by the worker's trial-charge job when it
+ *  creates an off-session PaymentIntent against the saved card. */
+export const PLAN_PRICE_CENTS: Record<string, number> = {
+  starter: 4_900,
+  premium: 14_900,
+  pro: 49_900,
+};
+
+/** Trial constants. The trial charges $1 immediately, grants 100 credits,
+ *  and converts (auto-charges the full plan) after this many days. */
+export const TRIAL_PRICE_CENTS = 100;
+export const TRIAL_CREDIT_GRANT = 100;
+export const TRIAL_DURATION_DAYS = 3;
+
 export function isStripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
 }

@@ -30,7 +30,9 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("full_name,credits,plan")
+      .select(
+        "full_name,credits,plan,trial_status,trial_ends_at,trial_target_plan,trial_last_error"
+      )
       .eq("id", userId)
       .maybeSingle(),
     supabase
@@ -104,11 +106,27 @@ export default async function DashboardPage() {
         : 0
       : Math.round(((last7 - prev7) / prev7) * 100);
 
+  const trial = profile?.trial_status
+    ? {
+        status: profile.trial_status as string,
+        endsAt: profile.trial_ends_at as string | null,
+        targetPlan: profile.trial_target_plan as string | null,
+        lastError: profile.trial_last_error as string | null,
+      }
+    : null;
+
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
         <span>Dashboard</span>
       </div>
+
+      {trial && trial.status === "active" && trial.endsAt ? (
+        <TrialBanner endsAt={trial.endsAt} targetPlan={trial.targetPlan ?? "starter"} />
+      ) : null}
+      {trial && trial.status === "failed" ? (
+        <TrialFailedBanner error={trial.lastError} />
+      ) : null}
 
       <section className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elev)] px-6 py-8 md:px-10 md:py-10">
         <div className="dot-grid absolute inset-0 opacity-50" aria-hidden />
@@ -310,6 +328,89 @@ export default async function DashboardPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function TrialBanner({
+  endsAt,
+  targetPlan,
+}: {
+  endsAt: string;
+  targetPlan: string;
+}) {
+  const end = new Date(endsAt);
+  const hoursLeft = Math.max(
+    0,
+    Math.round((end.getTime() - Date.now()) / (60 * 60 * 1000))
+  );
+  const daysLeft = Math.floor(hoursLeft / 24);
+  const remainingLabel =
+    daysLeft >= 1
+      ? `${daysLeft} day${daysLeft === 1 ? "" : "s"} ${hoursLeft % 24}h`
+      : `${hoursLeft}h`;
+  const planLabel =
+    targetPlan.charAt(0).toUpperCase() + targetPlan.slice(1);
+
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--brand-200)] bg-gradient-to-br from-[var(--brand-50)] via-white to-[var(--sky-50)] px-6 py-5 shadow-[0_4px_24px_rgba(15,23,42,0.04)]">
+      <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-gradient-to-br from-[var(--brand-300)]/30 to-transparent blur-3xl" />
+      <div className="relative flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--brand-600)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.30)] ring-4 ring-[var(--brand-100)]">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-1 rounded-full border border-[var(--brand-200)] bg-white/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--brand-700)] backdrop-blur">
+              Trial active
+            </div>
+            <h3 className="mt-1 text-base font-semibold text-[var(--ink-strong)]">
+              {remainingLabel} remaining · auto-upgrades to{" "}
+              <span className="text-[var(--brand-700)]">{planLabel}</span> on{" "}
+              {end.toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+              })}
+            </h3>
+            <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
+              Cancel before then in Settings and we won&apos;t charge your card.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/user/settings"
+          className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
+        >
+          Manage trial
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function TrialFailedBanner({ error }: { error: string | null }) {
+  return (
+    <section className="rounded-2xl border border-[var(--danger-100)] bg-[var(--danger-50)] px-5 py-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--danger-500)] text-white">
+          <Sparkles className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-[var(--danger-700)]">
+            Trial conversion failed
+          </div>
+          <p className="mt-0.5 text-xs text-[var(--danger-700)]/80">
+            {error ?? "We couldn't charge your saved card."} Visit Billing to
+            buy credits manually.
+          </p>
+        </div>
+        <Link
+          href="/user/billing"
+          className="ml-auto inline-flex items-center rounded-xl bg-[var(--danger-500)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--danger-700)]"
+        >
+          Go to Billing
+        </Link>
+      </div>
+    </section>
   );
 }
 

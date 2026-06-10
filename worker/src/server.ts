@@ -7,6 +7,7 @@ import { runScrapeJob, type JobEvent } from "./scrape-job.js";
 import { supabase } from "./db.js";
 import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
+import { runTrialCharge } from "./trial-charge.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -171,4 +172,20 @@ app.listen(PORT, () => {
       );
     }, TEN_MIN_MS);
   }, 60_000);
+
+  // Trial conversion runs hourly. First run after 2 min of warmup so the
+  // worker is fully online and Vercel's webhook surface is reachable. Stripe
+  // off-session PaymentIntents fire payment_intent.succeeded webhooks which
+  // Vercel handles — the worker just kicks off the charges.
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  setTimeout(() => {
+    runTrialCharge().catch((err) =>
+      console.error("[trial-charge] initial run failed:", err)
+    );
+    setInterval(() => {
+      runTrialCharge().catch((err) =>
+        console.error("[trial-charge] interval run failed:", err)
+      );
+    }, ONE_HOUR_MS);
+  }, 120_000);
 });
