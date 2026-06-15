@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       subject?: string;
       body?: string;
       delay_days?: number;
-      delay_unit?: "days" | "hours";
+      delay_unit?: "minutes" | "hours" | "days";
     }[];
     senderIds?: string[];
     dailyLimit?: number;
@@ -143,12 +143,14 @@ export async function POST(req: Request) {
     const rawUnit = (
       s as { delay_unit?: string }
     ).delay_unit?.toLowerCase();
-    const unit: "days" | "hours" =
+    const unit: "minutes" | "hours" | "days" =
       idx === 0
         ? "days"
-        : rawUnit === "hours"
-          ? "hours"
-          : "days";
+        : rawUnit === "minutes"
+          ? "minutes"
+          : rawUnit === "hours"
+            ? "hours"
+            : "days";
     return {
       campaign_id: campaignId,
       step_order: idx + 1,

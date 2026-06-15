@@ -44,7 +44,7 @@ type Step = {
   subject: string;
   body: string;
   delay_days: number;
-  delay_unit: "days" | "hours";
+  delay_unit: "minutes" | "hours" | "days";
 };
 
 const STEP_LABELS = ["Basics", "Prospect lists", "Sequence", "Senders & start"];
@@ -521,13 +521,14 @@ function StepSequence({
                         update(
                           i,
                           "delay_unit",
-                          (e.target.value as "days" | "hours")
+                          (e.target.value as "minutes" | "hours" | "days")
                         )
                       }
                       className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[12px]"
                     >
-                      <option value="days">days</option>
+                      <option value="minutes">minutes</option>
                       <option value="hours">hours</option>
+                      <option value="days">days</option>
                     </select>
                   </div>
                 )}

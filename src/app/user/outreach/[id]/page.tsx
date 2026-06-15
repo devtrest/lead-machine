@@ -74,9 +74,12 @@ export default async function CampaignDetailPage({
     id: s.id as string,
     step_order: s.step_order as number,
     delay_days: s.delay_days as number,
-    delay_unit: ((s.delay_unit as string | null) === "hours"
-      ? "hours"
-      : "days") as "days" | "hours",
+    delay_unit: (((): "minutes" | "hours" | "days" => {
+      const u = s.delay_unit as string | null;
+      if (u === "minutes") return "minutes";
+      if (u === "hours") return "hours";
+      return "days";
+    })()),
     subject: s.subject as string,
     body: s.body as string,
   }));

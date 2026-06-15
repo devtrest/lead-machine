@@ -27,7 +27,7 @@ import { supabase } from "./db.js";
 type Step = {
   step_order: number;
   delay_days: number;
-  delay_unit?: "days" | "hours";
+  delay_unit?: "minutes" | "hours" | "days";
   subject: string;
   body: string;
 };
@@ -37,6 +37,7 @@ type Step = {
 // legacy rows working without a backfill.
 function stepDelayMs(step: Step): number {
   const v = Math.max(0, step.delay_days);
+  if (step.delay_unit === "minutes") return v * 60 * 1000;
   if (step.delay_unit === "hours") return v * 60 * 60 * 1000;
   return v * 24 * 60 * 60 * 1000;
 }

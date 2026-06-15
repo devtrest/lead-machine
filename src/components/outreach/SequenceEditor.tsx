@@ -11,7 +11,7 @@ export type SequenceStep = {
   id?: string;
   step_order: number;
   delay_days: number;
-  delay_unit?: "days" | "hours";
+  delay_unit?: "minutes" | "hours" | "days";
   subject: string;
   body: string;
 };
@@ -209,13 +209,14 @@ export function SequenceEditor({
                           update(
                             idx,
                             "delay_unit",
-                            (e.target.value as "days" | "hours")
+                            (e.target.value as "minutes" | "hours" | "days")
                           )
                         }
                         className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[12px]"
                       >
-                        <option value="days">days</option>
+                        <option value="minutes">minutes</option>
                         <option value="hours">hours</option>
+                        <option value="days">days</option>
                       </select>
                       <span>after step {idx}</span>
                     </div>

@@ -8,7 +8,7 @@ type Params = Promise<{ id: string }>;
 type StepInput = {
   step_order?: number;
   delay_days?: number;
-  delay_unit?: "days" | "hours";
+  delay_unit?: "minutes" | "hours" | "days";
   subject?: string;
   body?: string;
 };
@@ -58,12 +58,14 @@ export async function PUT(req: Request, ctx: { params: Params }) {
       throw new Error(`Step ${idx + 1} needs a subject and body`);
     }
     const rawUnit = s.delay_unit?.toLowerCase();
-    const unit: "days" | "hours" =
+    const unit: "minutes" | "hours" | "days" =
       idx === 0
         ? "days"
-        : rawUnit === "hours"
-          ? "hours"
-          : "days";
+        : rawUnit === "minutes"
+          ? "minutes"
+          : rawUnit === "hours"
+            ? "hours"
+            : "days";
     return {
       campaign_id: id,
       step_order: idx + 1,
