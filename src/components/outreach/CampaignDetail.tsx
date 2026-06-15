@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Play, Pause, Trash2, Check, AlertTriangle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -48,6 +48,30 @@ export function CampaignDetail({
   const [nameSavedAt, setNameSavedAt] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Keep local status in sync with server prop after each router.refresh()
+  // below — otherwise Start/Pause buttons would still reflect the value the
+  // page loaded with even after the worker auto-completes the campaign.
+  useEffect(() => {
+    setStatus(initialStatus);
+  }, [initialStatus]);
+
+  // Live updates: while there are prospects still in flight, re-fetch the
+  // server data every 4s so the prospect rows, stats bar, "STEP X SENT",
+  // and "OPENED" badges update without a browser reload. Polling auto-stops
+  // when everyone hits a terminal status (completed/replied/bounced/failed).
+  // We also stop while a button action is in flight so router.refresh
+  // doesn't fight with the optimistic UI state.
+  const hasActiveProspects = prospects.some(
+    (p) => p.status === "pending" || p.status === "in_progress"
+  );
+  useEffect(() => {
+    if (!hasActiveProspects || busy) return;
+    const id = setInterval(() => {
+      router.refresh();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [hasActiveProspects, busy, router]);
 
   async function saveName() {
     if (!name.trim() || name.trim() === initialName) return;
