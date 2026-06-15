@@ -94,7 +94,17 @@ const CLAIM_WINDOW_MS = 10 * 60 * 1000;
 
 let running = false;
 
-export async function runOutreachTick(): Promise<TickResult> {
+type TickOpts = {
+  // fast mode (set by the "Send all now" button):
+  //   - skips inter-send humanization sleeps
+  //   - ignores send window (timezone + days + hours)
+  //   - ignores daily_limit cap
+  //   - filters to the single campaign we want to blast
+  fast?: boolean;
+  campaignId?: string;
+};
+
+export async function runOutreachTick(opts: TickOpts = {}): Promise<TickResult> {
   if (running) {
     console.log("[outreach-tick] previous tick still running, skipping");
     return { campaigns: 0, due: 0, sent: 0, failed: 0, skipped: 0 };
@@ -102,9 +112,9 @@ export async function runOutreachTick(): Promise<TickResult> {
   running = true;
   const t0 = Date.now();
   try {
-    const result = await tick();
+    const result = await tick(opts);
     console.log(
-      `[outreach-tick] tick done in ${Date.now() - t0}ms — campaigns:${result.campaigns} due:${result.due} sent:${result.sent} failed:${result.failed} skipped:${result.skipped}`
+      `[outreach-tick]${opts.fast ? " (fast)" : ""} tick done in ${Date.now() - t0}ms — campaigns:${result.campaigns} due:${result.due} sent:${result.sent} failed:${result.failed} skipped:${result.skipped}`
     );
     return result;
   } finally {
@@ -112,14 +122,18 @@ export async function runOutreachTick(): Promise<TickResult> {
   }
 }
 
-async function tick(): Promise<TickResult> {
+async function tick(opts: TickOpts = {}): Promise<TickResult> {
   // 1. Fetch all active campaigns (with steps, schedule, sender refs, limit).
-  const { data: campaignsRaw, error: campErr } = await supabase
+  let campaignsQuery = supabase
     .from("outreach_campaigns")
     .select(
       "id,user_id,name,send_window_start,send_window_end,send_days,timezone,daily_limit,outreach_steps(step_order,delay_days,delay_unit,subject,body),outreach_campaign_senders(sender_id)"
     )
     .eq("status", "active");
+  if (opts.campaignId) {
+    campaignsQuery = campaignsQuery.eq("id", opts.campaignId);
+  }
+  const { data: campaignsRaw, error: campErr } = await campaignsQuery;
 
   if (campErr) {
     console.error("[outreach-tick] fetch campaigns failed:", campErr);
@@ -249,14 +263,14 @@ async function tick(): Promise<TickResult> {
       sentToday: sentTodayByCampaign.get(c.id) ?? 0,
     };
 
-    if (!isWithinSendWindow(active)) {
+    if (!opts.fast && !isWithinSendWindow(active)) {
       console.log(
         `[outreach-tick] campaign "${active.name}" out of window (${active.sendWindowStart}-${active.sendWindowEnd} ${active.timezone}), skipping`
       );
       skippedOutOfWindow += 1;
       continue;
     }
-    if (active.sentToday >= active.dailyLimit) {
+    if (!opts.fast && active.sentToday >= active.dailyLimit) {
       console.log(
         `[outreach-tick] campaign "${active.name}" hit daily limit (${active.sentToday}/${active.dailyLimit}), deferring to tomorrow`
       );
@@ -346,8 +360,9 @@ async function tick(): Promise<TickResult> {
 
     // Stop sending this campaign if today's quota is exhausted. Defer the
     // remaining prospects to tomorrow midnight UTC so they get a fresh
-    // budget on the next tick after rollover.
-    if (campaign.sentToday >= campaign.dailyLimit) {
+    // budget on the next tick after rollover. Skipped in fast mode — the
+    // "Send all now" button overrides daily caps by design.
+    if (!opts.fast && campaign.sentToday >= campaign.dailyLimit) {
       const tomorrow = new Date();
       tomorrow.setUTCHours(0, 0, 0, 0);
       tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
@@ -384,7 +399,10 @@ async function tick(): Promise<TickResult> {
 
     // Random delay between sends (skip on the first iteration). Spam filters
     // flag dead-uniform bot intervals; this looks more like a person typing.
-    if (i > 0) {
+    // Fast mode (the "Send all now" button) bypasses this so the whole queue
+    // fires instantly — used for demos / urgent blasts where instant is
+    // worth the spam-rating tradeoff.
+    if (i > 0 && !opts.fast) {
       const delay = randInRange(MIN_INTER_SEND_MS, MAX_INTER_SEND_MS);
       console.log(
         `[outreach-tick] waiting ${Math.round(delay / 1000)}s before next send (humanization)`

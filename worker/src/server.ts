@@ -137,9 +137,14 @@ app.post("/scrape", requireAuth, async (req, res) => {
 // Same Bearer auth as /scrape; lets the frontend force a tick after a user
 // clicks "Start Campaign" so the first send fires within seconds instead of
 // waiting for the next interval.
-app.post("/outreach/tick", requireAuth, async (_req, res) => {
+app.post("/outreach/tick", requireAuth, async (req, res) => {
   try {
-    const result = await runOutreachTick();
+    const body = (req.body ?? {}) as { fast?: unknown; campaignId?: unknown };
+    const result = await runOutreachTick({
+      fast: body.fast === true,
+      campaignId:
+        typeof body.campaignId === "string" ? body.campaignId : undefined,
+    });
     res.json(result);
   } catch (err) {
     console.error("[/outreach/tick]", err);

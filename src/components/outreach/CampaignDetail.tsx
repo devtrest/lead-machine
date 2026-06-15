@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Pause, Trash2, Check, AlertTriangle } from "lucide-react";
+import { Play, Pause, Trash2, Check, AlertTriangle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
@@ -102,6 +102,37 @@ export function CampaignDetail({
     await start();
   }
 
+  async function sendAllNow() {
+    setActionError(null);
+    setBusy(true);
+    const res = await fetch(
+      `/api/outreach/campaigns/${campaignId}/send-now`,
+      { method: "POST" }
+    );
+    setBusy(false);
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      worker?: { sent?: number; failed?: number; due?: number };
+    };
+    if (!res.ok) {
+      setActionError(json.error ?? "Couldn't send.");
+      return;
+    }
+    setStatus("active");
+    const w = json.worker;
+    if (w && typeof w.sent === "number") {
+      setNameSavedAt(Date.now()); // reuse the "Saved" pill for a quick confirm flash
+      setActionError(
+        w.sent > 0
+          ? null
+          : w.failed && w.failed > 0
+            ? `Worker tried ${w.due ?? 0} sends — all failed. Check Railway logs.`
+            : "Worker found nothing due — try refreshing."
+      );
+    }
+    router.refresh();
+  }
+
   async function deleteCampaign() {
     if (
       !confirm(
@@ -142,6 +173,17 @@ export function CampaignDetail({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={sendAllNow}
+              disabled={busy}
+              loading={busy}
+              iconLeft={!busy ? <Zap className="h-3.5 w-3.5" /> : undefined}
+              title="Activate + fire every pending email right now, no humanization delay, no daily-limit check"
+            >
+              Send all now
+            </Button>
             {status === "draft" ? (
               <Button
                 type="button"
