@@ -724,6 +724,63 @@ async function sendViaGmailWith(
 ): Promise<SendOutcome> {
   const fromName = sender.display_name?.trim();
   const from = fromName ? `${fromName} <${sender.email}>` : `<${sender.email}>`;
+
+  // RELAY-VIA-VERCEL: Google silently drops TCP from Railway's egress IPs to
+  // smtp.gmail.com (anti-spam blocklist), so direct nodemailer SMTP from the
+  // worker times out at the socket layer every time. We POST the send payload
+  // to a Vercel internal endpoint which does the actual nodemailer.sendMail()
+  // from AWS Lambda's egress — those IPs aren't blocked. The endpoint is
+  // protected with the same WORKER_TOKEN we use for /scrape.
+  //
+  // Local-direct fallback: if WORKER_RELAY_URL is unset we fall back to the
+  // old direct-SMTP path, which still works from anywhere except Railway.
+  const relayUrl = (
+    process.env.WORKER_RELAY_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    ""
+  ).replace(/\/$/, "");
+  const token = process.env.WORKER_TOKEN?.trim();
+
+  if (relayUrl && token) {
+    try {
+      const res = await fetch(`${relayUrl}/api/worker/send-mail`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          senderEmail: sender.email,
+          senderPassword: sender.app_password,
+          from,
+          to: args.to,
+          subject: args.subject,
+          html: args.html,
+          replyTo: args.replyTo,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        id?: string;
+        error?: string;
+      };
+      if (res.ok && json.ok && json.id) {
+        return { ok: true, id: json.id };
+      }
+      return {
+        ok: false,
+        error: json.error ?? `Relay returned ${res.status}`,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "Relay network error",
+      };
+    }
+  }
+
+  // Direct path — kept for local dev and any env that doesn't have the relay
+  // env vars configured.
   try {
     const info = await transporterFor(sender).sendMail({
       from,
@@ -734,8 +791,6 @@ async function sendViaGmailWith(
     });
     return { ok: true, id: info.messageId || `gmail-${Date.now()}` };
   } catch (err) {
-    // Wedged socket / handshake timeout? Drop the cached transporter so the
-    // next attempt builds a fresh connection.
     evictTransporter(sender.id);
     return {
       ok: false,
