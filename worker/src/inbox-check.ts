@@ -119,6 +119,25 @@ async function checkSender(s: SenderRow): Promise<{ fetched: number; matched: nu
       pass: s.app_password.replace(/\s+/g, ""),
     },
     logger: false,
+    // Fail fast on a wedged connection so we don't sit idle for 30s+ while
+    // Gmail's edge holds the socket open. Pair with the explicit 'error'
+    // listener below so async socket timeouts can't crash the worker.
+    socketTimeout: 30_000,
+    connectionTimeout: 20_000,
+    greetingTimeout: 15_000,
+  });
+
+  // CRITICAL: imapflow's ImapFlow is an EventEmitter. If the underlying TLS
+  // socket times out mid-operation it emits 'error' asynchronously. With no
+  // listener, Node throws 'Unhandled error event' and kills the worker
+  // process — Railway then restarts it and we lose retry state. Swallow it
+  // here; the await calls below will reject independently and we handle
+  // them in the outer try/catch.
+  client.on("error", (err) => {
+    console.warn(
+      `[inbox-check] async IMAP error for ${s.email}:`,
+      err instanceof Error ? err.message : err
+    );
   });
 
   await client.connect();
@@ -150,10 +169,23 @@ async function checkSender(s: SenderRow): Promise<{ fetched: number; matched: nu
         if (matchedOne) matched += 1;
       }
     } finally {
-      lock.release();
+      // lock.release can throw on a dead socket — swallow it.
+      try {
+        lock.release();
+      } catch {
+        /* ignore */
+      }
     }
   } finally {
+    // logout can throw on a dead socket; close() is a synchronous force-kill
+    // of the underlying TCP connection. Belt-and-suspenders so a wedged
+    // connection can't leak into the next tick.
     await client.logout().catch(() => {});
+    try {
+      client.close();
+    } catch {
+      /* ignore */
+    }
   }
 
   // High-water mark — only advance on successful poll.

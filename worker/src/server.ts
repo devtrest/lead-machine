@@ -9,6 +9,18 @@ import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
 
+// Last-resort safety nets so a stray async error (e.g. an IMAP socket timeout
+// emitting 'error' on an unwatched EventEmitter) can't crash the whole worker.
+// Railway restarts on crash, but each restart drops in-memory state (sender
+// rotation cursor, transporter cache, scheduler positions) and a tick loop
+// that's mid-batch leaves prospects in inconsistent retry state.
+process.on("uncaughtException", (err) => {
+  console.error("[worker] uncaughtException:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[worker] unhandledRejection:", reason);
+});
+
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
