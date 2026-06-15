@@ -19,6 +19,7 @@ import {
   AtSign,
   Inbox,
   Activity,
+  Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initialsFor } from "@/lib/avatar";
@@ -259,6 +260,16 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                         <Settings className="h-3.5 w-3.5" />
                         Settings
                       </Link>
+                      {role === "admin" ? (
+                        <Link
+                          href="/admin"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-2 border-t border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-50)]"
+                        >
+                          <Shield className="h-3.5 w-3.5" />
+                          Switch to admin panel
+                        </Link>
+                      ) : null}
                       <button
                         type="button"
                         onClick={signOut}
