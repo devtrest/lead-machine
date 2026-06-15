@@ -18,10 +18,7 @@ import {
   CampaignStatsBar,
   type CampaignStats,
 } from "@/components/outreach/CampaignStatsBar";
-import {
-  TestSendCard,
-  type TestSender,
-} from "@/components/outreach/TestSendCard";
+import { type TestSender } from "@/components/outreach/TestSendCard";
 
 export function CampaignDetail({
   campaignId,
@@ -200,14 +197,6 @@ export function CampaignDetail({
       </div>
 
       <CampaignStatsBar stats={stats} />
-
-      <TestSendCard
-        senders={senders}
-        defaultSenderId={attachedSenderIds[0] ?? senders[0]?.id ?? null}
-        subject={steps[0]?.subject ?? ""}
-        body={steps[0]?.body ?? ""}
-        helpText="Send a copy of Step 1 to any inbox to preview what prospects will receive. Useful after editing the sequence."
-      />
 
       <SequenceEditor
         campaignId={campaignId}
