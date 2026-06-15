@@ -678,11 +678,18 @@ const transporterCache = new Map<string, Transporter>();
 function transporterFor(sender: Sender): Transporter {
   let t = transporterCache.get(sender.id);
   if (t) return t;
+  // Cast: nodemailer's published types overload on TransportOptions and don't
+  // expose `family`, but the underlying SMTPConnection forwards it to
+  // net.connect(). Keeps IPv4 forcing at the socket layer.
   t = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 587,
-    secure: false, // STARTTLS
-    requireTLS: true,
+    // Port 465 with implicit TLS. We were on 587 + STARTTLS, which hangs from
+    // Railway egress IPs ~100% of the time — every connection times out at
+    // 30s with zero diagnostic. 465 is direct TLS and has been more reliable
+    // from cloud providers. server.ts also pins DNS resolution to IPv4 which
+    // takes the second leg of this fix out of band.
+    port: 465,
+    secure: true,
     pool: true,
     maxConnections: 1,
     maxMessages: 100,
@@ -693,7 +700,8 @@ function transporterFor(sender: Sender): Transporter {
       user: sender.email,
       pass: sender.app_password.replace(/\s+/g, ""),
     },
-  });
+    family: 4,
+  } as Parameters<typeof nodemailer.createTransport>[0]);
   transporterCache.set(sender.id, t);
   return t;
 }
@@ -742,9 +750,8 @@ function getEnvGmailTransporter(): Transporter {
   if (envGmailTransporter) return envGmailTransporter;
   envGmailTransporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
+    port: 465,
+    secure: true,
     pool: true,
     maxConnections: 1,
     maxMessages: 100,
@@ -755,7 +762,8 @@ function getEnvGmailTransporter(): Transporter {
       user: process.env.GMAIL_USER!,
       pass: process.env.GMAIL_APP_PASSWORD!.replace(/\s+/g, ""),
     },
-  });
+    family: 4,
+  } as Parameters<typeof nodemailer.createTransport>[0]);
   return envGmailTransporter;
 }
 

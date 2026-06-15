@@ -3,11 +3,22 @@ import express, {
   type Response,
   type NextFunction,
 } from "express";
+import dns from "node:dns";
 import { runScrapeJob, type JobEvent } from "./scrape-job.js";
 import { supabase } from "./db.js";
 import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
+
+// Force IPv4 first for ALL DNS lookups in this process. Railway's egress
+// IPv6 routing to Google's edge (smtp.gmail.com, imap.gmail.com) is unreliable
+// — Node 22 default of 'verbatim' result order often picks the AAAA record
+// first, the socket hangs because Google's edge doesn't accept Railway's
+// IPv6 reverse-DNS, and we wait the full 30s socketTimeout before nodemailer
+// gives up. Forcing IPv4 picks the A record path which Google's edge accepts
+// from any cloud egress. Fixes the cascading "Connection timeout" failure
+// mode we hit on every outreach tick.
+dns.setDefaultResultOrder("ipv4first");
 
 // Last-resort safety nets so a stray async error (e.g. an IMAP socket timeout
 // emitting 'error' on an unwatched EventEmitter) can't crash the whole worker.
