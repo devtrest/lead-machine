@@ -27,9 +27,19 @@ import { supabase } from "./db.js";
 type Step = {
   step_order: number;
   delay_days: number;
+  delay_unit?: "days" | "hours";
   subject: string;
   body: string;
 };
+
+// Convert a step's (delay_days, delay_unit) into milliseconds. delay_days is
+// the magnitude; delay_unit decides what 1 unit means. Default 'days' keeps
+// legacy rows working without a backfill.
+function stepDelayMs(step: Step): number {
+  const v = Math.max(0, step.delay_days);
+  if (step.delay_unit === "hours") return v * 60 * 60 * 1000;
+  return v * 24 * 60 * 60 * 1000;
+}
 
 type Sender = {
   id: string;
@@ -106,7 +116,7 @@ async function tick(): Promise<TickResult> {
   const { data: campaignsRaw, error: campErr } = await supabase
     .from("outreach_campaigns")
     .select(
-      "id,user_id,name,send_window_start,send_window_end,send_days,timezone,daily_limit,outreach_steps(step_order,delay_days,subject,body),outreach_campaign_senders(sender_id)"
+      "id,user_id,name,send_window_start,send_window_end,send_days,timezone,daily_limit,outreach_steps(step_order,delay_days,delay_unit,subject,body),outreach_campaign_senders(sender_id)"
     )
     .eq("status", "active");
 
@@ -421,9 +431,7 @@ async function tick(): Promise<TickResult> {
         (s) => s.step_order === nextStepOrder + 1
       );
       const newNextSendAt = stepAfter
-        ? new Date(
-            Date.now() + stepAfter.delay_days * 24 * 60 * 60 * 1000
-          ).toISOString()
+        ? new Date(Date.now() + stepDelayMs(stepAfter)).toISOString()
         : null;
       const newStatus = stepAfter ? "in_progress" : "completed";
 

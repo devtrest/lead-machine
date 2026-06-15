@@ -44,6 +44,7 @@ type Step = {
   subject: string;
   body: string;
   delay_days: number;
+  delay_unit: "days" | "hours";
 };
 
 const STEP_LABELS = ["Basics", "Prospect lists", "Sequence", "Senders & start"];
@@ -70,6 +71,7 @@ export function CampaignWizard({
         subject: t?.subject ?? "",
         body: t?.body ?? "",
         delay_days: 0,
+        delay_unit: "days" as const,
       },
     ];
   });
@@ -133,6 +135,7 @@ export function CampaignWizard({
           subject: s.subject,
           body: s.body,
           delay_days: i === 0 ? 0 : s.delay_days,
+          delay_unit: i === 0 ? "days" : s.delay_unit,
         })),
         senderIds: Array.from(selectedSenderIds),
         dailyLimit,
@@ -454,6 +457,7 @@ function StepSequence({
         subject: t?.subject ?? "Re: {{name}}",
         body: t?.body ?? "",
         delay_days: 3,
+        delay_unit: "days",
       },
     ]);
   }
@@ -511,7 +515,20 @@ function StepSequence({
                       }
                       className="w-14 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-center text-[12px]"
                     />
-                    days
+                    <select
+                      value={s.delay_unit}
+                      onChange={(e) =>
+                        update(
+                          i,
+                          "delay_unit",
+                          (e.target.value as "days" | "hours")
+                        )
+                      }
+                      className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[12px]"
+                    >
+                      <option value="days">days</option>
+                      <option value="hours">hours</option>
+                    </select>
                   </div>
                 )}
               </div>

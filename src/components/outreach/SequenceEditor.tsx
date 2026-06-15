@@ -11,6 +11,7 @@ export type SequenceStep = {
   id?: string;
   step_order: number;
   delay_days: number;
+  delay_unit?: "days" | "hours";
   subject: string;
   body: string;
 };
@@ -31,6 +32,7 @@ export function SequenceEditor({
           {
             step_order: 1,
             delay_days: 0,
+            delay_unit: "days",
             subject:
               getTemplate("cold-intro")?.subject ?? "",
             body: getTemplate("cold-intro")?.body ?? "",
@@ -73,6 +75,7 @@ export function SequenceEditor({
       {
         step_order: prev.length + 1,
         delay_days: 3,
+        delay_unit: "days",
         subject: getTemplate("follow-up")?.subject ?? "",
         body: getTemplate("follow-up")?.body ?? "",
       },
@@ -107,6 +110,7 @@ export function SequenceEditor({
         steps: steps.map((s, i) => ({
           step_order: i + 1,
           delay_days: i === 0 ? 0 : s.delay_days,
+          delay_unit: i === 0 ? "days" : (s.delay_unit ?? "days"),
           subject: s.subject,
           body: s.body,
         })),
@@ -198,7 +202,22 @@ export function SequenceEditor({
                         }
                         className="w-14 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-center text-[12px]"
                       />
-                      <span>days after step {idx}</span>
+                      <select
+                        value={s.delay_unit ?? "days"}
+                        disabled={disabled}
+                        onChange={(e) =>
+                          update(
+                            idx,
+                            "delay_unit",
+                            (e.target.value as "days" | "hours")
+                          )
+                        }
+                        className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-[12px]"
+                      >
+                        <option value="days">days</option>
+                        <option value="hours">hours</option>
+                      </select>
+                      <span>after step {idx}</span>
                     </div>
                   )}
                 </div>

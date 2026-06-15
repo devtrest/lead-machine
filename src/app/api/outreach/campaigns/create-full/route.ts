@@ -32,7 +32,12 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     name?: string;
     scanRunIds?: string[];
-    steps?: { subject?: string; body?: string; delay_days?: number }[];
+    steps?: {
+      subject?: string;
+      body?: string;
+      delay_days?: number;
+      delay_unit?: "days" | "hours";
+    }[];
     senderIds?: string[];
     dailyLimit?: number;
     startNow?: boolean;
@@ -134,14 +139,26 @@ export async function POST(req: Request) {
   const campaignId = campaign.id as string;
 
   // ---- 2. Insert sequence steps ----
-  const stepRows = steps.map((s, idx) => ({
-    campaign_id: campaignId,
-    step_order: idx + 1,
-    delay_days:
-      idx === 0 ? 0 : Math.max(0, Math.floor(Number(s.delay_days) || 0)),
-    subject: s.subject!.trim(),
-    body: s.body!,
-  }));
+  const stepRows = steps.map((s, idx) => {
+    const rawUnit = (
+      s as { delay_unit?: string }
+    ).delay_unit?.toLowerCase();
+    const unit: "days" | "hours" =
+      idx === 0
+        ? "days"
+        : rawUnit === "hours"
+          ? "hours"
+          : "days";
+    return {
+      campaign_id: campaignId,
+      step_order: idx + 1,
+      delay_days:
+        idx === 0 ? 0 : Math.max(0, Math.floor(Number(s.delay_days) || 0)),
+      delay_unit: unit,
+      subject: s.subject!.trim(),
+      body: s.body!,
+    };
+  });
   const stepsRes = await supabase.from("outreach_steps").insert(stepRows);
   if (stepsRes.error) {
     return NextResponse.json({ error: stepsRes.error.message }, { status: 400 });

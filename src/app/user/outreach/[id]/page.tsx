@@ -40,7 +40,7 @@ export default async function CampaignDetailPage({
     await Promise.all([
       supabase
         .from("outreach_steps")
-        .select("id,step_order,delay_days,subject,body")
+        .select("id,step_order,delay_days,delay_unit,subject,body")
         .eq("campaign_id", id)
         .order("step_order", { ascending: true }),
       supabase
@@ -74,6 +74,9 @@ export default async function CampaignDetailPage({
     id: s.id as string,
     step_order: s.step_order as number,
     delay_days: s.delay_days as number,
+    delay_unit: ((s.delay_unit as string | null) === "hours"
+      ? "hours"
+      : "days") as "days" | "hours",
     subject: s.subject as string,
     body: s.body as string,
   }));
