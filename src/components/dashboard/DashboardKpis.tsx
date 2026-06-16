@@ -57,19 +57,18 @@ export function DashboardKpis({
     },
   ];
 
+  // Color lives only in a refined icon tile — soft fill + inset ring + a faint
+  // inner highlight. No colored bars; the premium feel comes from the tile,
+  // typography, and spacing.
   const toneMap = {
-    brand: "bg-[var(--brand-50)] text-[var(--brand-700)]",
-    amber: "bg-[var(--accent-50)] text-[var(--accent-700)]",
-    success: "bg-[var(--success-50)] text-[var(--success-700)]",
-    credits: "bg-[var(--brand-50)] text-[var(--brand-700)]",
-  };
-
-  // Thin colored rule at the top of each card — the one deliberate accent.
-  const accentMap = {
-    brand: "bg-[var(--brand-500)]",
-    amber: "bg-[var(--accent-500)]",
-    success: "bg-[var(--success-500)]",
-    credits: "bg-gradient-to-r from-[var(--brand-500)] to-[var(--sky-500)]",
+    brand:
+      "bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]",
+    amber:
+      "bg-gradient-to-br from-[var(--accent-50)] to-[var(--accent-100)] text-[var(--accent-700)] ring-1 ring-inset ring-[var(--accent-100)]",
+    success:
+      "bg-gradient-to-br from-[var(--success-50)] to-[var(--success-100)] text-[var(--success-700)] ring-1 ring-inset ring-[var(--success-100)]",
+    credits:
+      "bg-gradient-to-br from-[var(--brand-50)] to-[var(--sky-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]",
   };
 
   return (
@@ -87,30 +86,26 @@ export function DashboardKpis({
         >
           <Link
             href={tile.href}
-            className="group surface-card relative block overflow-hidden p-5 transition hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-sm)]"
+            className="group surface-card relative block p-5 transition hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-md)]"
           >
-            <span
-              className={`absolute inset-x-0 top-0 h-[3px] ${accentMap[tile.tone]}`}
-              aria-hidden
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-subtle)]">
-                {tile.label}
-              </span>
+            <div className="flex items-start justify-between">
               <span
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneMap[tile.tone]}`}
+                className={`flex h-11 w-11 items-center justify-center rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ${toneMap[tile.tone]}`}
               >
                 {tile.iconImg ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={tile.iconImg} alt="" aria-hidden className="h-4 w-4" />
+                  <img src={tile.iconImg} alt="" aria-hidden className="h-5 w-5" />
                 ) : (
                   tile.icon
                 )}
               </span>
+              <ArrowRight className="mt-1 h-4 w-4 -translate-x-1 text-[var(--ink-subtle)] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
             </div>
-            <div className="mt-4 flex items-baseline gap-2 text-[28px] font-semibold leading-none tracking-tight tabular-nums text-[var(--ink-strong)]">
+            <div className="mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-subtle)]">
+              {tile.label}
+            </div>
+            <div className="mt-1 text-[30px] font-semibold leading-none tracking-tight tabular-nums text-[var(--ink-strong)]">
               <Counter value={tile.value} />
-              <ArrowRight className="h-4 w-4 -translate-x-1 text-[var(--ink-subtle)] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
             </div>
             <div className="mt-2 flex items-center gap-1 text-xs text-[var(--ink-muted)]">
               {tile.tone === "brand" ? (
