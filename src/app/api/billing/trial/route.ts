@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const targetPlan = (body?.targetPlan as string | undefined)?.toLowerCase();
-  if (!targetPlan || !["starter", "premium", "pro"].includes(targetPlan)) {
+  if (!targetPlan || !["starter", "growth", "premium", "pro"].includes(targetPlan)) {
     return NextResponse.json(
       { error: "Pick a plan to upgrade to after the trial" },
       { status: 400 }

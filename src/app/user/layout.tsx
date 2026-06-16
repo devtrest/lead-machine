@@ -24,7 +24,7 @@ export default async function UserLayout({
 
   let { data: profile } = await supabase
     .from("profiles")
-    .select("credits,plan,role,full_name,suspended")
+    .select("credits,plan,role,full_name,suspended,onboarded")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -37,7 +37,7 @@ export default async function UserLayout({
     });
     const refetch = await supabase
       .from("profiles")
-      .select("credits,plan,role,full_name,suspended")
+      .select("credits,plan,role,full_name,suspended,onboarded")
       .eq("id", user.id)
       .maybeSingle();
     profile = refetch.data;
@@ -48,6 +48,13 @@ export default async function UserLayout({
   // surface bounded to its own role.
   if (profile && (profile as { role?: string }).role === "admin") {
     redirect("/admin");
+  }
+
+  // Onboarding gate: new users must start a trial/plan and answer the
+  // onboarding questions before they can reach the dashboard. Existing users
+  // were backfilled to onboarded=true by supabase/subscriptions.sql.
+  if (profile && (profile as { onboarded?: boolean }).onboarded !== true) {
+    redirect("/onboarding");
   }
 
   if (profile && (profile as { suspended?: boolean }).suspended === true) {
