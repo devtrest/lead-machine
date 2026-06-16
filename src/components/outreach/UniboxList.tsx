@@ -190,11 +190,13 @@ export function UniboxList({ replies }: { replies: UniboxReply[] }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Filter + search bar */}
       <div className="surface-card space-y-3 p-4">
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 shrink-0 text-[var(--ink-muted)]" />
+        <div className="flex items-start gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-50)] text-[var(--brand-700)]">
+            <Filter className="h-3.5 w-3.5" />
+          </span>
           <div className="flex flex-wrap gap-1.5">
             {FILTER_TABS.map((t) => {
               const isActive = filter === t.id;
@@ -204,16 +206,16 @@ export function UniboxList({ replies }: { replies: UniboxReply[] }) {
                   key={t.id}
                   type="button"
                   onClick={() => setFilter(t.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
                     isActive
-                      ? "border-[var(--brand-500)] bg-[var(--brand-600)] text-white"
-                      : "border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-muted)] hover:border-[var(--brand-300)] hover:text-[var(--ink-strong)]"
+                      ? "bg-gradient-to-r from-[var(--brand-600)] to-[var(--brand-500)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)]"
+                      : "border border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-muted)] hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
                   }`}
                 >
                   {t.label}
                   {count > 0 ? (
                     <span
-                      className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                      className={`rounded-full px-1.5 py-0.5 text-[9px] font-extrabold ${
                         isActive
                           ? "bg-white/25 text-white"
                           : "bg-[var(--surface-sunken)] text-[var(--ink-strong)]"
@@ -228,27 +230,27 @@ export function UniboxList({ replies }: { replies: UniboxReply[] }) {
           </div>
         </div>
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ink-subtle)]" />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-subtle)]" />
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by sender, subject, or message text…"
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] py-2 pl-9 pr-3.5 text-sm text-[var(--ink-strong)] placeholder:text-[var(--ink-subtle)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)]/40 py-2.5 pl-10 pr-3.5 text-sm text-[var(--ink-strong)] placeholder:text-[var(--ink-subtle)] outline-none transition focus:border-[var(--brand-500)] focus:bg-[var(--surface-elev)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[24rem_1fr]">
         {/* Left: thread list */}
-        <div className="surface-card max-h-[720px] overflow-y-auto p-0">
+        <div className="surface-card max-h-[760px] overflow-y-auto p-2">
           {visible.length === 0 ? (
             <div className="p-8 text-center text-sm text-[var(--ink-muted)]">
               <InboxIcon className="mx-auto mb-2 h-8 w-8 text-[var(--ink-subtle)]" />
               No replies match this filter.
             </div>
           ) : (
-            <ul className="divide-y divide-[var(--border)]">
+            <ul className="space-y-1.5">
               {visible.map((r) => (
                 <UniboxRow
                   key={r.id}
@@ -309,28 +311,43 @@ function UniboxRow({
 }) {
   const isUnread = !reply.readAt;
   const catMeta = reply.category ? CATEGORY_META[reply.category] : null;
+  const initials = initialsFromAddress(reply.fromName, reply.fromEmail);
+  const avatarGradient = avatarHueFor(reply.fromEmail);
+
   return (
     <li>
       <div
-        className={`group flex w-full items-start gap-2.5 px-4 py-3 text-left transition ${
+        className={`group relative flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition ${
           active
-            ? "bg-[var(--brand-50)]/60"
-            : "hover:bg-[var(--surface-sunken)]/40"
+            ? "bg-gradient-to-br from-[var(--brand-50)] to-[var(--sky-50)] ring-1 ring-[var(--brand-200)]"
+            : "hover:bg-[var(--surface-sunken)]/50"
         }`}
       >
+        {/* Active accent stripe */}
+        {active ? (
+          <span
+            className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-[var(--brand-600)] to-[var(--sky-500)]"
+            aria-hidden
+          />
+        ) : null}
+
+        {/* Avatar with initials */}
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onStar();
-          }}
-          className="mt-0.5 shrink-0 rounded p-0.5 transition hover:bg-[var(--warning-50)]"
-          aria-label={reply.starred ? "Unstar" : "Star"}
+          onClick={onSelect}
+          className="shrink-0"
+          aria-label="Open reply"
         >
-          <Star
-            className={`h-3.5 w-3.5 ${reply.starred ? "fill-[var(--warning-500)] text-[var(--warning-500)]" : "text-[var(--ink-subtle)]"}`}
-          />
+          <span
+            className={`relative flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(15,23,42,0.10)] ${avatarGradient}`}
+          >
+            {initials}
+            {isUnread ? (
+              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[var(--brand-600)]" />
+            ) : null}
+          </span>
         </button>
+
         <button
           type="button"
           onClick={onSelect}
@@ -340,45 +357,92 @@ function UniboxRow({
             <span
               className={`truncate text-sm ${
                 isUnread
-                  ? "font-semibold text-[var(--ink-strong)]"
+                  ? "font-bold text-[var(--ink-strong)]"
                   : "font-medium text-[var(--ink-muted)]"
               }`}
             >
-              {isUnread ? (
-                <span className="mr-1.5 inline-block h-1.5 w-1.5 -translate-y-0.5 rounded-full bg-[var(--brand-600)]" />
-              ) : null}
-              {reply.fromName || reply.fromEmail}
+              {reply.fromName || reply.fromEmail.split("@")[0]}
             </span>
-            <span className="shrink-0 text-[10px] text-[var(--ink-subtle)]">
+            <span className="shrink-0 text-[10px] font-medium text-[var(--ink-subtle)]">
               {timeAgo(reply.receivedAt)}
             </span>
           </div>
-          <div className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
+          <div
+            className={`mt-0.5 truncate text-xs ${
+              isUnread
+                ? "font-semibold text-[var(--ink-strong)]"
+                : "text-[var(--ink-muted)]"
+            }`}
+          >
             {reply.subject ?? "(no subject)"}
           </div>
           {reply.snippet ? (
-            <div className="mt-0.5 truncate text-[11px] text-[var(--ink-subtle)]">
+            <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--ink-subtle)]">
               {reply.snippet}
             </div>
           ) : null}
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-            {catMeta ? (
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${catMeta.chipClass}`}
-              >
-                <span>{catMeta.emoji}</span> {catMeta.label}
-              </span>
-            ) : null}
-            {reply.campaignName ? (
-              <span className="rounded-full bg-[var(--brand-50)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--brand-700)]">
-                {reply.campaignName}
-              </span>
-            ) : null}
-          </div>
+          {(catMeta || reply.campaignName) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              {catMeta ? (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${catMeta.chipClass}`}
+                >
+                  <span>{catMeta.emoji}</span> {catMeta.label}
+                </span>
+              ) : null}
+              {reply.campaignName ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-50)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--brand-700)]">
+                  {reply.campaignName}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStar();
+          }}
+          className="shrink-0 rounded-lg p-1.5 transition hover:bg-[var(--warning-50)]"
+          aria-label={reply.starred ? "Unstar" : "Star"}
+        >
+          <Star
+            className={`h-3.5 w-3.5 ${reply.starred ? "fill-[var(--warning-500)] text-[var(--warning-500)]" : "text-[var(--ink-subtle)]"}`}
+          />
         </button>
       </div>
     </li>
   );
+}
+
+// Stable rainbow assignment per email — same address always lights up with the
+// same gradient so a person feels visually consistent across the inbox.
+const AVATAR_GRADIENTS = [
+  "bg-gradient-to-br from-[var(--brand-600)] to-[var(--sky-500)]",
+  "bg-gradient-to-br from-pink-500 to-rose-500",
+  "bg-gradient-to-br from-amber-500 to-orange-500",
+  "bg-gradient-to-br from-emerald-500 to-teal-500",
+  "bg-gradient-to-br from-violet-500 to-fuchsia-500",
+  "bg-gradient-to-br from-cyan-500 to-blue-500",
+];
+
+function avatarHueFor(email: string): string {
+  let h = 0;
+  for (let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) | 0;
+  return AVATAR_GRADIENTS[Math.abs(h) % AVATAR_GRADIENTS.length];
+}
+
+function initialsFromAddress(
+  name: string | null,
+  email: string
+): string {
+  const src = (name?.trim() || email.split("@")[0]).replace(/[^a-z0-9 ]/gi, " ");
+  const parts = src.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function ReplyDetail({
@@ -395,154 +459,177 @@ function ReplyDetail({
     if (notes !== (reply.notes ?? "")) onPatch({ notes });
   }
 
+  const initials = initialsFromAddress(reply.fromName, reply.fromEmail);
+  const avatarGradient = avatarHueFor(reply.fromEmail);
+
   return (
-    <div className="surface-card space-y-4 p-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] text-[var(--brand-700)]">
-              <Mail className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-[var(--ink-strong)]">
-                {reply.fromName || reply.fromEmail}
+    <div className="surface-card relative space-y-5 overflow-hidden p-0">
+      {/* Gradient header strip */}
+      <div className="relative overflow-hidden border-b border-[var(--border)] bg-gradient-to-br from-[var(--brand-50)] via-white to-[var(--sky-50)] p-5">
+        <div
+          className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-40 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-bold text-white shadow-[0_8px_24px_rgba(15,23,42,0.15)] ${avatarGradient}`}
+            >
+              {initials}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-base font-bold text-[var(--ink-strong)]">
+                {reply.fromName || reply.fromEmail.split("@")[0]}
               </div>
-              {reply.fromName ? (
-                <div className="text-xs text-[var(--ink-muted)]">
-                  {reply.fromEmail}
-                </div>
-              ) : null}
+              <div className="truncate text-xs text-[var(--ink-muted)]">
+                {reply.fromEmail}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className="font-semibold text-[var(--ink-subtle)]">
+                  {new Date(reply.receivedAt).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+                {reply.campaignName ? (
+                  <Link
+                    href={`/user/outreach/${reply.campaignId}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-50)] px-1.5 py-0.5 font-bold text-[var(--brand-700)] transition hover:bg-[var(--brand-100)]"
+                  >
+                    {reply.campaignName}
+                  </Link>
+                ) : null}
+                {reply.leadName ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-sunken)] px-1.5 py-0.5 font-semibold text-[var(--ink-muted)]">
+                    {reply.leadName}
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
-          <div className="mt-3 text-base font-semibold text-[var(--ink-strong)]">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onPatch({ starred: !reply.starred })}
+              title={reply.starred ? "Unstar" : "Star"}
+              className="rounded-lg border border-[var(--border)] bg-white p-2 text-[var(--ink-subtle)] shadow-[var(--shadow-xs)] transition hover:border-[var(--warning-300)] hover:text-[var(--warning-700)]"
+            >
+              <Star
+                className={`h-3.5 w-3.5 ${reply.starred ? "fill-[var(--warning-500)] text-[var(--warning-500)]" : ""}`}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => onPatch({ archived: !reply.archivedAt })}
+              title={reply.archivedAt ? "Unarchive" : "Archive"}
+              className="rounded-lg border border-[var(--border)] bg-white p-2 text-[var(--ink-subtle)] shadow-[var(--shadow-xs)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-700)]"
+            >
+              <Archive className="h-3.5 w-3.5" />
+            </button>
+            <a
+              href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(reply.fromEmail)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-xs font-bold text-[var(--ink-strong)] shadow-[var(--shadow-xs)] transition hover:border-[var(--brand-200)] hover:bg-[var(--brand-50)]/40 hover:text-[var(--brand-700)]"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Gmail
+            </a>
+          </div>
+        </div>
+
+        <div className="relative mt-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            Subject
+          </div>
+          <div className="mt-1 text-lg font-bold tracking-tight text-[var(--ink-strong)]">
             {reply.subject ?? "(no subject)"}
           </div>
-          <div className="mt-1 text-[11px] text-[var(--ink-subtle)]">
-            {new Date(reply.receivedAt).toLocaleString()}
-            {reply.campaignName ? (
-              <>
-                {" · "}
-                <Link
-                  href={`/user/outreach/${reply.campaignId}`}
-                  className="font-semibold text-[var(--brand-700)] underline-offset-2 hover:underline"
+        </div>
+      </div>
+
+      <div className="space-y-5 px-5 pb-5">
+        {/* Category selector */}
+        <div className="space-y-2">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            Tag this reply
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(CATEGORY_META).map(([key, meta]) => {
+              const isActive = reply.category === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() =>
+                    onPatch({ category: isActive ? null : key })
+                  }
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition ${
+                    isActive
+                      ? meta.chipClass + " shadow-[var(--shadow-xs)]"
+                      : "border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-muted)] hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
+                  }`}
                 >
-                  {reply.campaignName}
-                </Link>
-              </>
-            ) : null}
-            {reply.leadName ? (
-              <>
-                {" · "}
-                <span className="font-medium text-[var(--ink-muted)]">
-                  {reply.leadName}
-                </span>
-              </>
-            ) : null}
+                  <span>{meta.emoji}</span>
+                  {meta.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+
+        {/* Snippet */}
+        <div className="space-y-2">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            Message
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)]/30 p-4 text-sm leading-relaxed text-[var(--ink-strong)]">
+            {reply.snippet ?? (
+              <span className="text-[var(--ink-muted)]">
+                Snippet unavailable. Open in Gmail for the full message.
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div className="space-y-2">
           <button
             type="button"
-            onClick={() => onPatch({ starred: !reply.starred })}
-            title={reply.starred ? "Unstar" : "Star"}
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] p-1.5 text-[var(--ink-subtle)] transition hover:border-[var(--warning-300)] hover:text-[var(--warning-700)]"
+            onClick={() => setShowNotes((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--ink-muted)] transition hover:text-[var(--brand-700)]"
           >
-            <Star
-              className={`h-3.5 w-3.5 ${reply.starred ? "fill-[var(--warning-500)] text-[var(--warning-500)]" : ""}`}
+            <StickyNote className="h-3 w-3" />
+            {showNotes ? "Hide notes" : reply.notes ? "Edit notes" : "Add notes"}
+          </button>
+          {showNotes ? (
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={saveNotes}
+              placeholder="Private notes (only you see these)…"
+              rows={3}
+              className="text-xs"
             />
-          </button>
-          <button
-            type="button"
-            onClick={() => onPatch({ archived: !reply.archivedAt })}
-            title={reply.archivedAt ? "Unarchive" : "Archive"}
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] p-1.5 text-[var(--ink-subtle)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-700)]"
-          >
-            <Archive className="h-3.5 w-3.5" />
-          </button>
-          <a
-            href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(reply.fromEmail)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-2.5 py-1.5 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Gmail
-          </a>
+          ) : null}
         </div>
-      </div>
 
-      {/* Category selector */}
-      <div className="space-y-1.5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-subtle)]">
-          Tag this reply
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(CATEGORY_META).map(([key, meta]) => {
-            const isActive = reply.category === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() =>
-                  onPatch({ category: isActive ? null : key })
-                }
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
-                  isActive ? meta.chipClass : "border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-muted)] hover:border-[var(--brand-300)]"
-                }`}
-              >
-                <span>{meta.emoji}</span>
-                {meta.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Snippet */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)]/40 p-4 text-sm leading-relaxed text-[var(--ink-strong)]">
-        {reply.snippet ?? (
-          <span className="text-[var(--ink-muted)]">
-            Snippet unavailable. Open in Gmail for the full message.
-          </span>
-        )}
-      </div>
-
-      {/* Notes */}
-      <div className="space-y-1.5">
-        <button
-          type="button"
-          onClick={() => setShowNotes((v) => !v)}
-          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[var(--ink-muted)] transition hover:text-[var(--ink-strong)]"
-        >
-          <StickyNote className="h-3 w-3" />
-          {showNotes ? "Hide notes" : reply.notes ? "Edit notes" : "Add notes"}
-        </button>
-        {showNotes ? (
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={saveNotes}
-            placeholder="Private notes (only you see these)…"
-            rows={3}
-            className="text-xs"
-          />
-        ) : null}
-      </div>
-
-      {/* Banner */}
-      {reply.campaignId ? (
-        <div className="flex items-start gap-2.5 rounded-xl border border-[var(--success-100)] bg-[var(--success-50)] px-3.5 py-2.5 text-xs text-[var(--success-700)]">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <div className="font-semibold">Campaign stopped for this contact</div>
-            <div className="mt-0.5 leading-relaxed">
-              No more campaign emails will go to this address. Reply below to
-              continue the conversation — it threads naturally in their Gmail.
+        {/* Banner */}
+        {reply.campaignId ? (
+          <div className="flex items-start gap-2.5 rounded-xl border border-[var(--success-100)] bg-[var(--success-50)] px-3.5 py-2.5 text-xs text-[var(--success-700)]">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <div className="font-bold">Campaign stopped for this contact</div>
+              <div className="mt-0.5 leading-relaxed">
+                No more campaign emails will go to this address. Reply below to
+                continue the conversation — it threads naturally in their Gmail.
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -583,52 +670,61 @@ function ReplyComposer({
   }
 
   return (
-    <div className="surface-card space-y-3 p-5">
-      <div className="flex items-center justify-between">
-        <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--ink-strong)]">
-          <ReplyIcon className="h-4 w-4 text-[var(--brand-700)]" />
-          Reply from Lead Machine
-        </h3>
-        <span className="text-[11px] text-[var(--ink-subtle)]">
-          Sends via the same Gmail that received it
-        </span>
-      </div>
-      {!senderConnected ? (
-        <div className="flex items-start gap-2 rounded-lg border border-[var(--warning-100)] bg-[var(--warning-50)] px-3 py-2 text-xs text-[var(--warning-700)]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          The sender that received this reply has been disconnected. Reply
-          from Gmail instead.
+    <div className="surface-card relative overflow-hidden p-0">
+      <div className="border-b border-[var(--border)] bg-gradient-to-r from-[var(--brand-50)]/40 to-transparent px-5 py-3">
+        <div className="flex items-center justify-between">
+          <h3 className="inline-flex items-center gap-2 text-sm font-bold text-[var(--ink-strong)]">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--brand-600)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)]">
+              <ReplyIcon className="h-3.5 w-3.5" />
+            </span>
+            Reply from Lead Machine
+          </h3>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+            Sends from the same Gmail
+          </span>
         </div>
-      ) : (
-        <>
-          <Textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Type your reply…"
-            rows={6}
-            className="text-sm"
-            disabled={sending}
-          />
-          {error ? (
-            <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {error}
-            </div>
-          ) : null}
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              size="sm"
-              onClick={send}
-              loading={sending}
-              disabled={sending || !body.trim()}
-              iconRight={!sending ? <Send className="h-3.5 w-3.5" /> : undefined}
-            >
-              Send reply
-            </Button>
+      </div>
+
+      <div className="space-y-3 p-5">
+        {!senderConnected ? (
+          <div className="flex items-start gap-2 rounded-xl border border-[var(--warning-100)] bg-[var(--warning-50)] px-3 py-2.5 text-xs text-[var(--warning-700)]">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            The sender that received this reply has been disconnected. Reply
+            from Gmail instead.
           </div>
-        </>
-      )}
+        ) : (
+          <>
+            <Textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Type your reply…"
+              rows={6}
+              className="text-sm"
+              disabled={sending}
+            />
+            {error ? (
+              <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {error}
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] text-[var(--ink-subtle)]">
+                Threads naturally — your prospect sees a normal Gmail reply.
+              </span>
+              <Button
+                type="button"
+                onClick={send}
+                loading={sending}
+                disabled={sending || !body.trim()}
+                iconRight={!sending ? <Send className="h-3.5 w-3.5" /> : undefined}
+              >
+                Send reply
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
