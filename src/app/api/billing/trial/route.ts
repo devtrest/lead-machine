@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 // POST /api/billing/trial
 // Body: { targetPlan: 'starter' | 'premium' | 'pro' }
 //
-// Starts a $1 / 3-day trial that grants 100 credits immediately and saves
-// the card off-session. After 3 days the worker's trial-charge job creates
+// Starts a $7 / 7-day trial that grants 100 credits immediately and saves
+// the card off-session. After 7 days the worker's trial-charge job creates
 // a PaymentIntent against the saved card for the selected target plan, and
 // the regular payment_intent.succeeded webhook grants the full credits.
 export async function POST(req: Request) {
@@ -74,8 +74,8 @@ export async function POST(req: Request) {
             currency: "usd",
             unit_amount: TRIAL_PRICE_CENTS,
             product_data: {
-              name: "Lead Machine — 3-day trial",
-              description: `100 credits for 3 days. Auto-upgrades to your ${capitalize(
+              name: `Lead Machine — ${TRIAL_DURATION_DAYS}-day trial`,
+              description: `100 credits for ${TRIAL_DURATION_DAYS} days. Auto-upgrades to your ${capitalize(
                 targetPlan
               )} plan after the trial unless cancelled.`,
             },

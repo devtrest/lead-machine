@@ -12,6 +12,9 @@ import {
   Pause,
   Play,
   Info,
+  Eye,
+  EyeOff,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -265,12 +268,23 @@ function AddSenderForm({
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [appPassword, setAppPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Live count of password chars (ignoring spaces) — Gmail app passwords are
+  // exactly 16. Lets the user spot a missing/extra char before submitting.
+  const trimmedLen = appPassword.replace(/\s+/g, "").length;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (trimmedLen !== 16) {
+      setError(
+        `Gmail app passwords are exactly 16 characters. You entered ${trimmedLen}.`
+      );
+      return;
+    }
     setSubmitting(true);
     const res = await fetch("/api/outreach/senders", {
       method: "POST",
@@ -311,18 +325,51 @@ function AddSenderForm({
       </div>
       <Input
         label="App password"
+        type={showPassword ? "text" : "password"}
         required
         placeholder="xxxx xxxx xxxx xxxx"
         value={appPassword}
         onChange={(e) => setAppPassword(e.target.value)}
-        hint="16 characters from myaccount.google.com/apppasswords. Spaces are ignored."
+        hint={`16 characters from myaccount.google.com/apppasswords. Spaces are ignored. (${trimmedLen}/16)`}
+        iconRight={
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            className="rounded p-0.5 text-[var(--ink-subtle)] transition hover:text-[var(--ink-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-500)]/30"
+          >
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </button>
+        }
       />
+
+      {/* Verification disclosure — the API actually validates the credentials
+          now by opening an SMTP connection. The submit button shows the
+          extra latency that adds (~3s). */}
+      <div className="flex items-start gap-2 rounded-lg border border-[var(--brand-100)] bg-[var(--brand-50)]/50 px-3 py-2 text-[11px] text-[var(--brand-700)]">
+        <Info className="mt-0.5 h-3 w-3 shrink-0" />
+        We&apos;ll open a real SMTP connection to Gmail to verify these
+        credentials. If the password is wrong, the sender will NOT be saved.
+      </div>
+
       <div className="flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" loading={submitting}>
-          Connect
+        <Button type="submit" loading={submitting} disabled={submitting}>
+          {submitting ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Verifying with Gmail…
+            </span>
+          ) : (
+            "Connect"
+          )}
         </Button>
       </div>
       <p className="text-[11px] text-[var(--ink-subtle)]">

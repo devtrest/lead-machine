@@ -78,13 +78,13 @@ export function SiteHeader({ signedIn, isAdmin }: Props) {
                 href="/login"
                 className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--ink-muted)] transition hover:bg-[var(--surface-sunken)] hover:text-[var(--ink-strong)]"
               >
-                Sign in
+                Login
               </Link>
               <Link
                 href="/signup"
                 className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:bg-[var(--brand-700)]"
               >
-                Start free
+                Get started
               </Link>
             </>
           )}
@@ -163,14 +163,14 @@ export function SiteHeader({ signedIn, isAdmin }: Props) {
                       onClick={() => setMobileOpen(false)}
                       className="flex w-full items-center justify-center rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--ink-strong)]"
                     >
-                      Sign in
+                      Login
                     </Link>
                     <Link
                       href="/signup"
                       onClick={() => setMobileOpen(false)}
                       className="flex w-full items-center justify-center rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white"
                     >
-                      Start free
+                      Get started
                     </Link>
                   </>
                 )}

@@ -135,7 +135,7 @@ export function LoginForm() {
           className="w-full"
           iconRight={!loading ? <ArrowRight className="h-4 w-4" /> : undefined}
         >
-          {loading ? "Signing in…" : "Sign in"}
+          {loading ? "Logging in…" : "Login"}
         </Button>
       </form>
     </motion.div>

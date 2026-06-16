@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 30;
 
 // GET /api/outreach/senders — list this user's connected senders.
 // app_password is masked in the response so it never leaks back to the client.
@@ -65,6 +68,40 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+
+  // ACTUAL credential verification (previously this route was lying — it had
+  // a 'we validate before storing' comment but the verify code was missing,
+  // so any random 16-char string saved as 'active'). We open a real SMTP
+  // connection to smtp.gmail.com:465 and run the auth handshake. Wrong
+  // password = nodemailer rejects with 'Invalid login: 535-5.7.8 Username
+  // and Password not accepted' and we surface that to the user instead of
+  // pretending the account is connected.
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    connectionTimeout: 15_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+    auth: { user: email, pass: appPassword },
+  } as Parameters<typeof nodemailer.createTransport>[0]);
+
+  try {
+    await transporter.verify();
+  } catch (err) {
+    transporter.close();
+    const raw = err instanceof Error ? err.message : "Authentication failed";
+    // Gmail's "Username and Password not accepted" comes back wrapped in a
+    // multi-line SMTP error. Surface a friendly version + a hint.
+    const friendly =
+      /Username and Password not accepted|535|BadCredentials/i.test(raw)
+        ? "Gmail rejected those credentials. Double-check the app password (16 chars, no spaces) and that 2-Step Verification is enabled on the account."
+        : /timeout|ETIMEDOUT/i.test(raw)
+          ? "Couldn't reach smtp.gmail.com from the server. Try again — if it keeps failing, Gmail may be throttling new connections."
+          : raw;
+    return NextResponse.json({ error: friendly }, { status: 400 });
+  }
+  transporter.close();
 
   // daily_limit on the sender row is the Gmail hard ceiling (~500/day).
   // It's a safety enforcement, not a user-tuned setting. Campaign-level pace

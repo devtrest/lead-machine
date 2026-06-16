@@ -109,7 +109,7 @@ export default function LoginPage() {
         <div className="space-y-4">
           <div className="text-center md:hidden">
             <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
-              Sign in to{" "}
+              Login to{" "}
               <span className="brand-text-gradient">Lead Machine</span>
             </h1>
             <p className="mt-1 text-sm text-[var(--ink-muted)]">
@@ -117,7 +117,7 @@ export default function LoginPage() {
             </p>
           </div>
           <h2 className="hidden text-xl font-semibold text-[var(--ink-strong)] md:block">
-            Sign in to your account
+            Login to your account
           </h2>
 
           <Suspense

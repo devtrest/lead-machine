@@ -58,11 +58,14 @@ export const PLAN_PRICE_CENTS: Record<string, number> = {
   pro: 49_900,
 };
 
-/** Trial constants. The trial charges $1 immediately, grants 100 credits,
- *  and converts (auto-charges the full plan) after this many days. */
-export const TRIAL_PRICE_CENTS = 100;
+/** Trial constants. The trial charges $7 immediately, grants 100 credits,
+ *  and converts (auto-charges the full plan) after this many days. There are
+ *  NO free credits at signup — users land at 0 credits and must either start
+ *  the $7 trial or buy a plan outright to use the product. */
+export const TRIAL_PRICE_CENTS = 700;
+export const TRIAL_PRICE_USD = "$7";
 export const TRIAL_CREDIT_GRANT = 100;
-export const TRIAL_DURATION_DAYS = 3;
+export const TRIAL_DURATION_DAYS = 7;
 
 export function isStripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY?.trim());

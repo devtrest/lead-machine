@@ -3,8 +3,8 @@ import { ArrowLeft, Sparkles, Check } from "lucide-react";
 import { SignupForm } from "./signup-form";
 
 const perks = [
-  "10 starter credits, no credit card",
-  "Generate leads in any city",
+  "Start your 7-day trial for $7",
+  "100 credits — generate 100 leads",
   "CSV export and CRM-ready data",
 ];
 
@@ -40,7 +40,7 @@ export default function SignupPage() {
         <div className="hidden flex-col justify-center md:flex">
           <div className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)]">
             <Sparkles className="h-3 w-3" />
-            Free to start
+            $7 · 7-day trial
           </div>
           <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[var(--ink-strong)]">
             Stop hunting leads. <br />
@@ -72,7 +72,7 @@ export default function SignupPage() {
               account
             </h1>
             <p className="mt-1 text-sm text-[var(--ink-muted)]">
-              10 starter credits — no credit card.
+              Start your trial for just $7.
             </p>
           </div>
           <h2 className="hidden text-xl font-semibold text-[var(--ink-strong)] md:block">
@@ -85,7 +85,7 @@ export default function SignupPage() {
               href="/login"
               className="font-semibold text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
             >
-              Sign in →
+              Login →
             </Link>
           </p>
         </div>

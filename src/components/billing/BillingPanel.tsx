@@ -232,14 +232,14 @@ function TrialCard({ onError }: { onError: (msg: string | null) => void }) {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-200)] bg-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--brand-700)] backdrop-blur">
             <Sparkles className="h-3 w-3" />
-            3-day trial
+            7-day trial
           </div>
           <h3 className="mt-2 text-2xl font-bold tracking-tight text-[var(--ink-strong)]">
             Try Lead Machine for{" "}
-            <span className="text-[var(--brand-700)]">$1</span>
+            <span className="text-[var(--brand-700)]">$7</span>
           </h3>
           <p className="mt-1 text-sm text-[var(--ink-muted)]">
-            100 credits, 3 days. Auto-upgrades to your selected plan unless
+            100 credits, 7 days. Auto-upgrades to your selected plan unless
             you cancel.
           </p>
 
@@ -292,7 +292,7 @@ function TrialCard({ onError }: { onError: (msg: string | null) => void }) {
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            {busy ? "Redirecting…" : "Start $1 trial"}
+            {busy ? "Redirecting…" : "Start $7 trial"}
           </button>
           <p className="text-center text-[10px] leading-relaxed text-[var(--ink-subtle)]">
             On day 4 we&apos;ll charge{" "}

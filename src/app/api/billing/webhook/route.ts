@@ -96,8 +96,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const email =
     session.customer_details?.email ?? session.customer_email ?? null;
 
-  // Trial activation path. $1 charged immediately, 100 credits granted, card
-  // stored on customer for the 3-day auto-charge.
+  // Trial activation path. $7 charged immediately, 100 credits granted, card
+  // stored on customer for the 7-day auto-charge.
   if (session.metadata?.is_trial === "true") {
     const targetPlan =
       (session.metadata?.trial_target_plan as string | undefined)?.toLowerCase() ??

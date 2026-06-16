@@ -26,17 +26,22 @@ export function InboxCheckButton() {
       toast.error("Inbox check failed", json.error);
       return;
     }
-    const fetched = json.fetched ?? 0;
     const matched = json.matched ?? 0;
+    const errors = json.errors ?? 0;
     if (matched > 0) {
       toast.success(
         `${matched} new ${matched === 1 ? "reply" : "replies"}`,
-        `Polled ${json.senders} sender${json.senders === 1 ? "" : "s"}, fetched ${fetched} message${fetched === 1 ? "" : "s"}.`
+        `From your outreach campaigns.`
+      );
+    } else if (errors > 0) {
+      toast.error(
+        "Inbox check finished with errors",
+        `${errors} sender${errors === 1 ? "" : "s"} couldn't be reached. See the sender row for details.`
       );
     } else {
       toast.info(
         "No new replies",
-        `Polled ${json.senders} sender${json.senders === 1 ? "" : "s"}, fetched ${fetched} message${fetched === 1 ? "" : "s"}.`
+        `We checked ${json.senders} connected inbox${json.senders === 1 ? "" : "es"} but nothing matched an outreach campaign yet.`
       );
     }
     router.refresh();
