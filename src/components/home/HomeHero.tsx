@@ -78,7 +78,7 @@ export function HomeHero({
           </div>
           <div className="mt-5 flex items-center justify-center gap-1.5 text-xs text-[var(--ink-subtle)]">
             <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[var(--success-500)]" />
-            Start for $7 · 100 credits, 7-day trial
+            Start for $1 · 100 credits, 7-day trial
           </div>
         </motion.div>
 

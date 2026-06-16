@@ -16,7 +16,7 @@ const tiers = [
     id: "starter" as const,
     name: "Starter",
     price: "$49",
-    cadence: "after $7 trial · lifetime",
+    cadence: "after $1 trial · lifetime",
     blurb: "Solo founders validating their first niche.",
     perks: [
       "3,000 lead credits (never expire)",
@@ -30,7 +30,7 @@ const tiers = [
     id: "premium" as const,
     name: "Premium",
     price: "$149",
-    cadence: "after $7 trial · lifetime",
+    cadence: "after $1 trial · lifetime",
     blurb: "Growth teams running outbound week to week.",
     perks: [
       "15,000 lead credits (never expire)",
@@ -45,7 +45,7 @@ const tiers = [
     id: "pro" as const,
     name: "Pro",
     price: "$499",
-    cadence: "after $7 trial · lifetime",
+    cadence: "after $1 trial · lifetime",
     blurb: "Agencies running lead-gen at scale.",
     perks: [
       "100,000 lead credits (never expire)",
@@ -78,8 +78,8 @@ export function PricingSection({ signedIn }: Props) {
   const [enterpriseNote, setEnterpriseNote] = useState("");
 
   async function choosePlan(plan: "starter" | "premium" | "pro") {
-    // All paid plans now flow through the $7 trial. The user's selected plan
-    // is stored as trial_target_plan, $7 is charged immediately, and after
+    // All paid plans now flow through the $1 trial. The user's selected plan
+    // is stored as trial_target_plan, $1 is charged immediately, and after
     // the trial window the worker auto-converts to the full plan price using
     // the saved card (off-session PaymentIntent). One CTA, three target
     // plans, same payment experience.
@@ -235,7 +235,7 @@ export function PricingSection({ signedIn }: Props) {
                   {busy === tier.id ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : null}
-                  {busy === tier.id ? "Redirecting…" : "Start for $7"}
+                  {busy === tier.id ? "Redirecting…" : "Start for $1"}
                 </button>
               ) : (
                 <Link
@@ -246,7 +246,7 @@ export function PricingSection({ signedIn }: Props) {
                       : "border border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-strong)] hover:bg-[var(--surface-sunken)]"
                   }`}
                 >
-                  Start for $7
+                  Start for $1
                 </Link>
               )}
             </div>

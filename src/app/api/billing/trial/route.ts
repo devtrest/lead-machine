@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // POST /api/billing/trial
 // Body: { targetPlan: 'starter' | 'premium' | 'pro' }
 //
-// Starts a $7 / 7-day trial that grants 100 credits immediately and saves
+// Starts a $1 / 7-day trial that grants 100 credits immediately and saves
 // the card off-session. After 7 days the worker's trial-charge job creates
 // a PaymentIntent against the saved card for the selected target plan, and
 // the regular payment_intent.succeeded webhook grants the full credits.

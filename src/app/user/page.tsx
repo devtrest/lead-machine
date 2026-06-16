@@ -381,7 +381,7 @@ function OnboardingBanner() {
               Pick a plan to start generating leads
             </h3>
             <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
-              Try Lead Machine for $7 / 7 days — 100 credits up front, auto-upgrades to your chosen plan after the trial.
+              Try Lead Machine for $1 / 7 days — 100 credits up front, auto-upgrades to your chosen plan after the trial.
             </p>
           </div>
         </div>
@@ -390,7 +390,7 @@ function OnboardingBanner() {
           className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2 text-xs font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:bg-[var(--brand-700)]"
         >
           <Sparkles className="h-3 w-3" />
-          Start for $7
+          Start for $1
           <ArrowRight className="h-3 w-3" />
         </Link>
       </div>

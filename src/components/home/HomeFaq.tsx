@@ -33,7 +33,7 @@ const faqs: Faq[] = [
   },
   {
     q: "What's the trial?",
-    a: "$7 for 7 days, 100 credits up front. After the trial period we auto-charge the plan you picked at trial start. Cancel any time before then in Settings and we won't charge.",
+    a: "$1 for 7 days, 100 credits up front. After the trial period we auto-charge the plan you picked at trial start. Cancel any time before then in Settings and we won't charge.",
   },
   {
     q: "Can I get a refund?",
