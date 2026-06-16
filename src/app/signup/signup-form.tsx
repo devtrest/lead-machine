@@ -51,7 +51,11 @@ export function SignupForm() {
       return;
     }
     if (data.session) {
-      router.replace("/user");
+      // First stop after signup is /user/billing — the trial picker is the
+      // first thing every new user sees. Brand-new accounts have 0 credits
+      // (no freebies) and the billing hero shows the $7 trial-to-plan
+      // options front-and-center.
+      router.replace("/user/billing");
       router.refresh();
       return;
     }

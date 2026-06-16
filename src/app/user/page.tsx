@@ -118,8 +118,17 @@ export default async function DashboardPage() {
       }
     : null;
 
+  // First-time-user gate: no credits, no plan activity, no active trial.
+  // Surface a hard-to-miss "Pick a plan to get started" banner that points
+  // straight at /user/billing. New users land at /user/billing on signup
+  // anyway, but this catches the case where they bounced back to the
+  // dashboard without picking anything.
+  const showOnboardingBanner =
+    (profile?.credits ?? 0) === 0 && !trial;
+
   return (
     <div className="space-y-8">
+      {showOnboardingBanner ? <OnboardingBanner /> : null}
       {trial && trial.status === "active" && trial.endsAt ? (
         <TrialBanner endsAt={trial.endsAt} targetPlan={trial.targetPlan ?? "starter"} />
       ) : null}
@@ -352,6 +361,40 @@ export default async function DashboardPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function OnboardingBanner() {
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--brand-200)] bg-gradient-to-br from-[var(--brand-50)] via-white to-[var(--sky-50)] px-6 py-5 shadow-[0_4px_24px_rgba(15,23,42,0.04)]">
+      <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-gradient-to-br from-[var(--brand-300)]/30 to-transparent blur-3xl" />
+      <div className="relative flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--brand-600)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.30)] ring-4 ring-[var(--brand-100)]">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-1 rounded-full border border-[var(--brand-200)] bg-white/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-[var(--brand-700)] backdrop-blur">
+              Welcome
+            </div>
+            <h3 className="mt-1 text-base font-semibold text-[var(--ink-strong)]">
+              Pick a plan to start generating leads
+            </h3>
+            <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
+              Try Lead Machine for $7 / 7 days — 100 credits up front, auto-upgrades to your chosen plan after the trial.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/user/billing"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2 text-xs font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:bg-[var(--brand-700)]"
+        >
+          <Sparkles className="h-3 w-3" />
+          Start for $7
+          <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+    </section>
   );
 }
 
