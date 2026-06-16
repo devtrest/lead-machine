@@ -51,6 +51,12 @@ type Sender = {
   sends_today: number;
   last_reset_at: string;
   status: string;
+  // Multi-provider SMTP — null for legacy Gmail rows that pre-date the
+  // migration. transporterFor() falls back to Gmail's defaults in that case.
+  provider: string | null;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_secure: boolean | null;
 };
 
 type ActiveCampaign = {
@@ -171,7 +177,7 @@ async function tick(opts: TickOpts = {}): Promise<TickResult> {
     supabase
       .from("outreach_senders")
       .select(
-        "id,user_id,email,display_name,app_password,daily_limit,sends_today,last_reset_at,status"
+        "id,user_id,email,display_name,app_password,daily_limit,sends_today,last_reset_at,status,provider,smtp_host,smtp_port,smtp_secure"
       )
       .in("user_id", userIds)
       .eq("status", "active"),
@@ -214,6 +220,10 @@ async function tick(opts: TickOpts = {}): Promise<TickResult> {
       sends_today: sendsToday,
       last_reset_at: today,
       status: s.status as string,
+      provider: (s.provider as string | null) ?? "gmail",
+      smtp_host: (s.smtp_host as string | null) ?? null,
+      smtp_port: (s.smtp_port as number | null) ?? null,
+      smtp_secure: (s.smtp_secure as boolean | null) ?? null,
     });
   }
 
@@ -696,18 +706,19 @@ const transporterCache = new Map<string, Transporter>();
 function transporterFor(sender: Sender): Transporter {
   let t = transporterCache.get(sender.id);
   if (t) return t;
-  // Cast: nodemailer's published types overload on TransportOptions and don't
-  // expose `family`, but the underlying SMTPConnection forwards it to
-  // net.connect(). Keeps IPv4 forcing at the socket layer.
+  // Per-sender SMTP host. Falls back to Gmail's defaults (smtp.gmail.com:465
+  // implicit-TLS) for legacy rows that pre-date the multi-provider migration.
+  // For Gmail-style senders the app-password whitespace strip stays. Other
+  // providers may have meaningful whitespace so we leave the password alone.
+  const host = sender.smtp_host ?? "smtp.gmail.com";
+  const port = sender.smtp_port ?? 465;
+  const secure = sender.smtp_secure ?? true;
+  const isGmail = (sender.provider ?? "gmail") === "gmail";
   t = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    // Port 465 with implicit TLS. We were on 587 + STARTTLS, which hangs from
-    // Railway egress IPs ~100% of the time — every connection times out at
-    // 30s with zero diagnostic. 465 is direct TLS and has been more reliable
-    // from cloud providers. server.ts also pins DNS resolution to IPv4 which
-    // takes the second leg of this fix out of band.
-    port: 465,
-    secure: true,
+    host,
+    port,
+    secure,
+    requireTLS: !secure,
     pool: true,
     maxConnections: 1,
     maxMessages: 100,
@@ -716,7 +727,7 @@ function transporterFor(sender: Sender): Transporter {
     socketTimeout: 30_000,
     auth: {
       user: sender.email,
-      pass: sender.app_password.replace(/\s+/g, ""),
+      pass: isGmail ? sender.app_password.replace(/\s+/g, "") : sender.app_password,
     },
     family: 4,
   } as Parameters<typeof nodemailer.createTransport>[0]);
@@ -775,6 +786,13 @@ async function sendViaGmailWith(
           subject: args.subject,
           html: args.html,
           replyTo: args.replyTo,
+          // Per-sender SMTP routing — relay now knows which host to dial
+          // instead of always going to smtp.gmail.com. Legacy rows without
+          // these columns pass null and the relay falls back to Gmail.
+          smtpHost: sender.smtp_host,
+          smtpPort: sender.smtp_port,
+          smtpSecure: sender.smtp_secure,
+          provider: sender.provider,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {

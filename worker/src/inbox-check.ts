@@ -24,6 +24,10 @@ type SenderRow = {
   email: string;
   app_password: string;
   last_inbox_check_at: string | null;
+  provider: string | null;
+  imap_host: string | null;
+  imap_port: number | null;
+  imap_secure: boolean | null;
 };
 
 export type InboxResult = {
@@ -57,10 +61,9 @@ async function check(): Promise<InboxResult> {
   const { data: senders, error } = await supabase
     .from("outreach_senders")
     .select(
-      "id,user_id,email,app_password,last_inbox_check_at"
+      "id,user_id,email,app_password,last_inbox_check_at,provider,imap_host,imap_port,imap_secure"
     )
-    .eq("status", "active")
-    .eq("provider", "gmail");
+    .eq("status", "active");
 
   if (error) {
     console.error("[inbox-check] fetch senders failed:", error);
@@ -75,6 +78,10 @@ async function check(): Promise<InboxResult> {
   let totalErrors = 0;
 
   for (const s of senders as SenderRow[]) {
+    // Skip senders that don't have an IMAP endpoint configured. Custom
+    // SMTP-only senders (relays / outbound-only setups) don't have a
+    // mailbox to poll and we shouldn't flag them as errored.
+    if (!s.imap_host) continue;
     try {
       const { fetched, matched } = await checkSender(s);
       totalFetched += fetched;
@@ -111,12 +118,16 @@ async function checkSender(s: SenderRow): Promise<{ fetched: number; matched: nu
     : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const client = new ImapFlow({
-    host: "imap.gmail.com",
-    port: 993,
-    secure: true,
+    // Per-sender IMAP. Falls back to Gmail's defaults if the multi-provider
+    // migration hasn't run yet on a given environment.
+    host: s.imap_host ?? "imap.gmail.com",
+    port: s.imap_port ?? 993,
+    secure: s.imap_secure ?? true,
     auth: {
       user: s.email,
-      pass: s.app_password.replace(/\s+/g, ""),
+      pass: (s.provider ?? "gmail") === "gmail"
+        ? s.app_password.replace(/\s+/g, "")
+        : s.app_password,
     },
     logger: false,
     // Fail fast on a wedged connection so we don't sit idle for 30s+ while

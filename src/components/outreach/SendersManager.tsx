@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -15,10 +15,17 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Server,
+  ExternalLink,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
+import {
+  allPresets,
+  presetForKey,
+  type SenderPresetKey,
+} from "@/lib/sender-providers";
 
 export type Sender = {
   id: string;
@@ -83,41 +90,6 @@ export function SendersManager({
 
   return (
     <div className="space-y-4">
-      {/* Help banner */}
-      <div className="flex items-start gap-3 rounded-xl border border-[var(--brand-100)] bg-[var(--brand-50)]/50 p-4 text-sm text-[var(--brand-800)]">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-700)]" />
-        <div className="space-y-1">
-          <p className="font-medium">How to connect a Gmail sender</p>
-          <ol className="list-inside list-decimal space-y-0.5 text-xs text-[var(--brand-700)]">
-            <li>
-              Enable 2-Step Verification on the Google account (
-              <a
-                href="https://myaccount.google.com/security"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                myaccount.google.com/security
-              </a>
-              )
-            </li>
-            <li>
-              Generate an App Password (
-              <a
-                href="https://myaccount.google.com/apppasswords"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                myaccount.google.com/apppasswords
-              </a>
-              ) — 16 characters, spaces don&apos;t matter
-            </li>
-            <li>Paste it below. We&apos;ll validate by attempting an SMTP login.</li>
-          </ol>
-        </div>
-      </div>
-
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-[var(--ink-strong)]">
           Connected senders ({initialSenders.length})
@@ -128,7 +100,7 @@ export function SendersManager({
           onClick={() => setAddOpen((v) => !v)}
           iconLeft={<Plus className="h-3.5 w-3.5" />}
         >
-          Connect Gmail
+          Connect a sender
         </Button>
       </div>
 
@@ -222,8 +194,11 @@ export function SendersManager({
                       </span>
                       <StatusDot status={s.status} />
                     </div>
-                    <div className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
-                      {s.email}
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-xs text-[var(--ink-muted)]">
+                      <span className="truncate">{s.email}</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--ink-strong)]">
+                        {presetForKey(s.provider).label}
+                      </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -332,6 +307,7 @@ function AddSenderForm({
   onAdded: () => void;
 }) {
   const toast = useToast();
+  const [providerKey, setProviderKey] = useState<SenderPresetKey>("gmail");
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [appPassword, setAppPassword] = useState("");
@@ -339,28 +315,57 @@ function AddSenderForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Live count of password chars (ignoring spaces) — Gmail app passwords are
-  // exactly 16. Lets the user spot a missing/extra char before submitting.
+  // Custom-provider fields. Only used when providerKey === 'custom'.
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecure, setSmtpSecure] = useState(false); // false = STARTTLS, true = implicit TLS
+  const [imapHost, setImapHost] = useState("");
+  const [imapPort, setImapPort] = useState("993");
+  const [imapSecure, setImapSecure] = useState(true);
+
+  const presets = useMemo(() => allPresets(), []);
+  const preset = presetForKey(providerKey);
   const trimmedLen = appPassword.replace(/\s+/g, "").length;
+  const isGmail = providerKey === "gmail";
+  const isCustom = providerKey === "custom";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (trimmedLen !== 16) {
+    if (isGmail && trimmedLen !== 16) {
       setError(
         `Gmail app passwords are exactly 16 characters. You entered ${trimmedLen}.`
       );
       return;
     }
+    if (!isGmail && appPassword.length < 4) {
+      setError("Password is too short.");
+      return;
+    }
+    if (isCustom && (!smtpHost.trim() || !imapHost.trim())) {
+      setError("SMTP host and IMAP host are required for custom providers.");
+      return;
+    }
+
     setSubmitting(true);
+    const payload: Record<string, unknown> = {
+      provider: providerKey,
+      email,
+      appPassword,
+      displayName: displayName || undefined,
+    };
+    if (isCustom) {
+      payload.smtpHost = smtpHost.trim();
+      payload.smtpPort = Number(smtpPort);
+      payload.smtpSecure = smtpSecure;
+      payload.imapHost = imapHost.trim();
+      payload.imapPort = Number(imapPort);
+      payload.imapSecure = imapSecure;
+    }
     const res = await fetch("/api/outreach/senders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email,
-        appPassword,
-        displayName: displayName || undefined,
-      }),
+      body: JSON.stringify(payload),
     });
     setSubmitting(false);
     const json = (await res.json().catch(() => ({}))) as { error?: string };
@@ -373,13 +378,60 @@ function AddSenderForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="surface-card space-y-3 p-4">
+    <form onSubmit={onSubmit} className="surface-card space-y-4 p-4">
+      {/* Provider tile picker — visual grid, click to select. */}
+      <div className="space-y-2">
+        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+          Provider
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {presets.map((p) => {
+            const active = p.key === providerKey;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => setProviderKey(p.key)}
+                className={`group flex items-start gap-2 rounded-xl border p-2.5 text-left transition ${
+                  active
+                    ? "border-[var(--brand-500)] bg-[var(--brand-50)] ring-2 ring-[var(--brand-500)]/20"
+                    : "border-[var(--border)] bg-[var(--surface-elev)] hover:border-[var(--brand-200)] hover:bg-[var(--brand-50)]/40"
+                }`}
+              >
+                <span
+                  className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                    active
+                      ? "bg-[var(--brand-600)] text-white"
+                      : "bg-[var(--surface-sunken)] text-[var(--ink-muted)]"
+                  }`}
+                >
+                  {p.key === "custom" ? (
+                    <Server className="h-3.5 w-3.5" />
+                  ) : (
+                    <Mail className="h-3.5 w-3.5" />
+                  )}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[var(--ink-strong)]">
+                    {p.label}
+                  </div>
+                  <div className="mt-0.5 truncate text-[10px] text-[var(--ink-muted)]">
+                    {p.description}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Email + display name */}
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
-          label="Gmail address"
+          label={isGmail ? "Gmail address" : "Email address"}
           type="email"
           required
-          placeholder="you@gmail.com"
+          placeholder={isGmail ? "you@gmail.com" : "you@yourdomain.com"}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -390,14 +442,20 @@ function AddSenderForm({
           onChange={(e) => setDisplayName(e.target.value)}
         />
       </div>
+
+      {/* Password */}
       <Input
-        label="App password"
+        label={preset.passwordLengthHint}
         type={showPassword ? "text" : "password"}
         required
-        placeholder="xxxx xxxx xxxx xxxx"
+        placeholder={isGmail ? "xxxx xxxx xxxx xxxx" : "Your password"}
         value={appPassword}
         onChange={(e) => setAppPassword(e.target.value)}
-        hint={`16 characters from myaccount.google.com/apppasswords. Spaces are ignored. (${trimmedLen}/16)`}
+        hint={
+          isGmail
+            ? `${preset.passwordHint} (${trimmedLen}/16)`
+            : preset.passwordHint
+        }
         iconRight={
           <button
             type="button"
@@ -415,13 +473,107 @@ function AddSenderForm({
         }
       />
 
-      {/* Verification disclosure — the API actually validates the credentials
-          now by opening an SMTP connection. The submit button shows the
-          extra latency that adds (~3s). */}
+      {/* Custom-SMTP/IMAP fields — only when 'custom' is selected. */}
+      {isCustom ? (
+        <div className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)]/30 p-3.5">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            Custom SMTP (outbound)
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_120px_140px]">
+            <Input
+              label="SMTP host"
+              placeholder="smtp.yourdomain.com"
+              required
+              value={smtpHost}
+              onChange={(e) => setSmtpHost(e.target.value)}
+            />
+            <Input
+              label="Port"
+              type="number"
+              required
+              value={smtpPort}
+              onChange={(e) => setSmtpPort(e.target.value)}
+            />
+            <div>
+              <label className="block text-xs font-medium text-[var(--ink-muted)]">
+                Encryption
+              </label>
+              <select
+                value={smtpSecure ? "ssl" : "starttls"}
+                onChange={(e) => setSmtpSecure(e.target.value === "ssl")}
+                className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] px-3 py-2 text-sm text-[var(--ink-strong)] outline-none focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
+              >
+                <option value="starttls">STARTTLS (587)</option>
+                <option value="ssl">SSL/TLS (465)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            Custom IMAP (inbox replies)
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_120px_140px]">
+            <Input
+              label="IMAP host"
+              placeholder="imap.yourdomain.com"
+              required
+              value={imapHost}
+              onChange={(e) => setImapHost(e.target.value)}
+            />
+            <Input
+              label="Port"
+              type="number"
+              required
+              value={imapPort}
+              onChange={(e) => setImapPort(e.target.value)}
+            />
+            <div>
+              <label className="block text-xs font-medium text-[var(--ink-muted)]">
+                Encryption
+              </label>
+              <select
+                value={imapSecure ? "ssl" : "starttls"}
+                onChange={(e) => setImapSecure(e.target.value === "ssl")}
+                className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] px-3 py-2 text-sm text-[var(--ink-strong)] outline-none focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
+              >
+                <option value="ssl">SSL/TLS (993)</option>
+                <option value="starttls">STARTTLS (143)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Preset summary — shows the user what hosts we'll dial */}
+      {!isCustom ? (
+        <div className="flex flex-wrap items-start gap-3 rounded-lg border border-[var(--brand-100)] bg-[var(--brand-50)]/40 px-3 py-2 text-[11px] text-[var(--brand-800)]">
+          <Info className="mt-0.5 h-3 w-3 shrink-0 text-[var(--brand-700)]" />
+          <div className="space-y-0.5">
+            <div>
+              SMTP <span className="font-mono">{preset.smtpHost}:{preset.smtpPort}</span>
+              {" · "}
+              IMAP <span className="font-mono">{preset.imapHost}:{preset.imapPort}</span>
+            </div>
+            {preset.helpUrl ? (
+              <a
+                href={preset.helpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 underline"
+              >
+                {preset.label} security settings
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Verification disclosure */}
       <div className="flex items-start gap-2 rounded-lg border border-[var(--brand-100)] bg-[var(--brand-50)]/50 px-3 py-2 text-[11px] text-[var(--brand-700)]">
         <Info className="mt-0.5 h-3 w-3 shrink-0" />
-        We&apos;ll open a real SMTP connection to Gmail to verify these
-        credentials. If the password is wrong, the sender will NOT be saved.
+        We&apos;ll open a real SMTP connection to verify these credentials.
+        If the password is wrong, the sender will NOT be saved.
       </div>
 
       <div className="flex items-center justify-end gap-2">
@@ -432,7 +584,7 @@ function AddSenderForm({
           {submitting ? (
             <span className="inline-flex items-center gap-1.5">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Verifying with Gmail…
+              Verifying with {preset.label}…
             </span>
           ) : (
             "Connect"
@@ -440,8 +592,8 @@ function AddSenderForm({
         </Button>
       </div>
       <p className="text-[11px] text-[var(--ink-subtle)]">
-        Daily send pace is configured per campaign, not per sender. Gmail&apos;s
-        ~500/day account ceiling is enforced automatically.
+        Daily send pace is configured per campaign, not per sender. Each
+        provider&apos;s typical account ceiling is applied automatically.
       </p>
       {error ? (
         <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">

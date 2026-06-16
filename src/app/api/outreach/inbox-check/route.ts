@@ -27,6 +27,10 @@ type SenderRow = {
   email: string;
   app_password: string;
   last_inbox_check_at: string | null;
+  imap_host: string | null;
+  imap_port: number | null;
+  imap_secure: boolean | null;
+  provider: string | null;
 };
 
 function serviceRoleClient() {
@@ -63,10 +67,11 @@ export async function POST() {
 
   const { data: senders, error } = await admin
     .from("outreach_senders")
-    .select("id,user_id,email,app_password,last_inbox_check_at")
+    .select(
+      "id,user_id,email,app_password,last_inbox_check_at,provider,imap_host,imap_port,imap_secure"
+    )
     .eq("user_id", user.id)
-    .eq("status", "active")
-    .eq("provider", "gmail");
+    .eq("status", "active");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -80,6 +85,12 @@ export async function POST() {
   let totalErrors = 0;
 
   for (const s of senders as SenderRow[]) {
+    // Skip senders that have no IMAP host configured. Custom-SMTP-only
+    // setups (relay-style senders) don't have an inbox to poll — that's
+    // fine, we just don't poll them and don't flag an error.
+    if (!s.imap_host) {
+      continue;
+    }
     try {
       const { fetched, matched } = await checkSender(admin, s);
       totalFetched += fetched;
@@ -117,13 +128,19 @@ async function checkSender(
     ? new Date(s.last_inbox_check_at)
     : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+  // Per-sender host/port now — supports Outlook, Titan, Zoho, Yahoo, and
+  // custom domains alongside Gmail. Falls back to Gmail's defaults if the
+  // columns are null (legacy rows that pre-date the multi-provider
+  // migration).
   const client = new ImapFlow({
-    host: "imap.gmail.com",
-    port: 993,
-    secure: true,
+    host: s.imap_host ?? "imap.gmail.com",
+    port: s.imap_port ?? 993,
+    secure: s.imap_secure ?? true,
     auth: {
       user: s.email,
-      pass: s.app_password.replace(/\s+/g, ""),
+      pass: s.provider === "gmail"
+        ? s.app_password.replace(/\s+/g, "")
+        : s.app_password,
     },
     logger: false,
     socketTimeout: 30_000,

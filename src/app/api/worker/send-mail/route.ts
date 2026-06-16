@@ -29,6 +29,12 @@ type Body = {
   subject?: unknown;
   html?: unknown;
   replyTo?: unknown;
+  // Multi-provider routing — defaults to Gmail when missing (legacy worker
+  // calls that don't yet pass these stay working).
+  smtpHost?: unknown;
+  smtpPort?: unknown;
+  smtpSecure?: unknown;
+  provider?: unknown;
 };
 
 export async function POST(req: NextRequest) {
@@ -55,6 +61,19 @@ export async function POST(req: NextRequest) {
   const html = typeof body.html === "string" ? body.html : "";
   const replyTo = typeof body.replyTo === "string" ? body.replyTo : null;
 
+  const smtpHost =
+    typeof body.smtpHost === "string" && body.smtpHost
+      ? body.smtpHost
+      : "smtp.gmail.com";
+  const smtpPort =
+    typeof body.smtpPort === "number" && body.smtpPort > 0
+      ? body.smtpPort
+      : 465;
+  const smtpSecure =
+    typeof body.smtpSecure === "boolean" ? body.smtpSecure : true;
+  const provider =
+    typeof body.provider === "string" ? body.provider : "gmail";
+
   if (!senderEmail || !senderPassword || !from || !to || !subject || !html) {
     return NextResponse.json(
       { ok: false, error: "Missing required field" },
@@ -63,15 +82,19 @@ export async function POST(req: NextRequest) {
   }
 
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
+    requireTLS: !smtpSecure,
     connectionTimeout: 20_000,
     greetingTimeout: 15_000,
     socketTimeout: 25_000,
     auth: {
       user: senderEmail,
-      pass: senderPassword.replace(/\s+/g, ""),
+      // Strip whitespace from Gmail app passwords (they're displayed as
+      // 'xxxx xxxx xxxx xxxx' but stored without spaces). Other providers
+      // may have meaningful whitespace, so leave their passwords alone.
+      pass: provider === "gmail" ? senderPassword.replace(/\s+/g, "") : senderPassword,
     },
   });
 
