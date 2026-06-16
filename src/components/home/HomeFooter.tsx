@@ -61,27 +61,27 @@ const columns: FooterColumn[] = [
   {
     title: "Use cases",
     links: [
-      { label: "Cold outreach", href: "/how-it-works" },
-      { label: "Lead generation", href: "/how-it-works" },
-      { label: "Local prospecting", href: "/how-it-works" },
-      { label: "CRM enrichment", href: "/how-it-works" },
+      { label: "Agencies", href: "/use-cases" },
+      { label: "SaaS founders", href: "/use-cases" },
+      { label: "Freelancers", href: "/use-cases" },
+      { label: "Sales teams", href: "/use-cases" },
     ],
   },
   {
     title: "Company",
     links: [
-      { label: "About", href: "/" },
-      { label: "Contact", href: "mailto:hello@leadmachine.ai" },
-      { label: "Status", href: "/" },
+      { label: "About", href: "/about" },
+      { label: "Use cases", href: "/use-cases" },
+      { label: "Contact", href: "/contact" },
     ],
   },
   {
     title: "Legal",
     links: [
-      { label: "Privacy policy", href: "/" },
-      { label: "Terms of service", href: "/" },
-      { label: "Cookie policy", href: "/" },
-      { label: "GDPR", href: "/" },
+      { label: "Privacy policy", href: "/privacy" },
+      { label: "Terms of service", href: "/terms" },
+      { label: "Cookie policy", href: "/cookies" },
+      { label: "GDPR", href: "/privacy" },
     ],
   },
 ];
@@ -202,13 +202,13 @@ export function HomeFooter({
             © {new Date().getFullYear()} Lead Machine. All rights reserved.
           </p>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[var(--ink-muted)]">
-            <Link href="/" className="transition hover:text-[var(--ink-strong)]">
+            <Link href="/privacy" className="transition hover:text-[var(--ink-strong)]">
               Privacy
             </Link>
-            <Link href="/" className="transition hover:text-[var(--ink-strong)]">
+            <Link href="/terms" className="transition hover:text-[var(--ink-strong)]">
               Terms
             </Link>
-            <Link href="/" className="transition hover:text-[var(--ink-strong)]">
+            <Link href="/cookies" className="transition hover:text-[var(--ink-strong)]">
               Cookies
             </Link>
             <span className="text-[var(--ink-subtle)]">·</span>

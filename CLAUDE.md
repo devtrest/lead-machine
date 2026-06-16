@@ -276,7 +276,9 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 
 **Public:**
 - `/` — marketing home with hero, features, how-it-works, preview, testimonials, pricing, FAQ, footer CTA
-- `/how-it-works`, `/pricing`, `/faq` — standalone marketing pages
+- `/how-it-works`, `/use-cases`, `/pricing`, `/faq` — standalone marketing pages
+- `/about`, `/contact` — company pages (contact form composes a mailto)
+- `/privacy`, `/terms`, `/cookies` — legal pages (shared `LegalDoc` component)
 - `/login` — user sign-in (show/hide password)
 - `/signup` — two-column sales pitch on left, form on right
 - `/leadmachineadmin` — **dedicated admin sign-in**, noindexed. Separate URL so

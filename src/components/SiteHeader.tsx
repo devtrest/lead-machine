@@ -48,6 +48,12 @@ export function SiteHeader({ signedIn, isAdmin }: Props) {
             How it works
           </Link>
           <Link
+            href="/use-cases"
+            className="transition hover:text-[var(--ink-strong)]"
+          >
+            Use cases
+          </Link>
+          <Link
             href="/pricing"
             className="transition hover:text-[var(--ink-strong)]"
           >
@@ -133,6 +139,7 @@ export function SiteHeader({ signedIn, isAdmin }: Props) {
               <div className="mt-6 space-y-1">
                 {[
                   ["How it works", "/how-it-works"],
+                  ["Use cases", "/use-cases"],
                   ["Pricing", "/pricing"],
                   ["FAQ", "/faq"],
                 ].map(([label, href]) => (
