@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -12,9 +14,13 @@ import {
   Activity,
   Eye,
   Reply,
+  Pause,
+  Play,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 import { StatusBadge } from "@/components/outreach/StatusBadge";
+import { useToast } from "@/components/ui/Toast";
 
 // String keys instead of function references so server components can pass
 // these props across the server→client boundary without serialization issues.
@@ -175,6 +181,13 @@ function EmptyState() {
 }
 
 function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, setBusy] = useState<"pause" | "resume" | null>(null);
+  // Local status mirror so the badge + buttons flip without waiting for the
+  // server round-trip. router.refresh() syncs the rest of the page.
+  const [status, setStatus] = useState(campaign.status);
+
   const contactedPct =
     campaign.prospects > 0
       ? Math.min(100, Math.round((campaign.contacted / campaign.prospects) * 100))
@@ -187,6 +200,50 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
     campaign.contacted > 0
       ? Math.round((campaign.replied / campaign.contacted) * 100)
       : 0;
+
+  // Pause / resume from the list view — same endpoints the detail page uses.
+  // Pause = PATCH status=paused on the campaign row (worker tick skips paused
+  // campaigns at the WHERE status='active' filter so no more sends fire).
+  // Resume = POST /start (handles draft→active AND paused→active, also pokes
+  // the worker tick immediately so the next send goes within seconds, not the
+  // full 15-min wait).
+  async function pauseCampaign(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setBusy("pause");
+    const res = await fetch(`/api/outreach/campaigns/${campaign.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "paused" }),
+    });
+    setBusy(null);
+    if (res.ok) {
+      setStatus("paused");
+      toast.success("Campaign paused", `"${campaign.name}" is now paused`);
+      router.refresh();
+    } else {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error("Couldn't pause", j.error);
+    }
+  }
+
+  async function resumeCampaign(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setBusy("resume");
+    const res = await fetch(`/api/outreach/campaigns/${campaign.id}/start`, {
+      method: "POST",
+    });
+    setBusy(null);
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    if (res.ok) {
+      setStatus("active");
+      toast.success("Campaign resumed", `"${campaign.name}" is active again`);
+      router.refresh();
+    } else {
+      toast.error("Couldn't resume", j.error);
+    }
+  }
 
   return (
     <motion.div
@@ -220,7 +277,7 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
                 </div>
               ) : null}
             </div>
-            <StatusBadge status={campaign.status} />
+            <StatusBadge status={status} />
           </div>
 
           {/* Progress bar */}
@@ -271,7 +328,7 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
           </div>
 
           {/* Footer */}
-          <div className="mt-4 flex items-center justify-between border-t border-[var(--border)] pt-3">
+          <div className="mt-4 flex items-center justify-between gap-2 border-t border-[var(--border)] pt-3">
             <span className="text-[10px] text-[var(--ink-subtle)]">
               Created{" "}
               {new Date(campaign.created_at).toLocaleDateString(undefined, {
@@ -279,9 +336,48 @@ function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
                 day: "numeric",
               })}
             </span>
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand-700)] transition group-hover:gap-1.5">
-              Open <ArrowRight className="h-3 w-3" />
-            </span>
+
+            <div className="flex items-center gap-1.5">
+              {/* Pause / Resume — only meaningful for active or paused
+                  campaigns. Draft + completed have no in-flight sending to
+                  pause and need either Start (which lives on the detail page)
+                  or no action at all. */}
+              {status === "active" ? (
+                <button
+                  type="button"
+                  onClick={pauseCampaign}
+                  disabled={busy !== null}
+                  title="Pause sending"
+                  className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 py-1 text-[11px] font-semibold text-[var(--ink-strong)] transition hover:border-[var(--warning-300)] hover:bg-[var(--warning-50)] hover:text-[var(--warning-700)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy === "pause" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Pause className="h-3 w-3" />
+                  )}
+                  Pause
+                </button>
+              ) : status === "paused" ? (
+                <button
+                  type="button"
+                  onClick={resumeCampaign}
+                  disabled={busy !== null}
+                  title="Resume sending"
+                  className="inline-flex items-center gap-1 rounded-full border border-[var(--brand-200)] bg-[var(--brand-50)] px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-700)] transition hover:bg-[var(--brand-100)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy === "resume" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Play className="h-3 w-3" />
+                  )}
+                  Resume
+                </button>
+              ) : null}
+
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand-700)] transition group-hover:gap-1.5">
+                Open <ArrowRight className="h-3 w-3" />
+              </span>
+            </div>
           </div>
         </div>
       </Link>
