@@ -38,8 +38,8 @@ export default async function HomePage() {
       <SiteHeader signedIn={signedIn} isAdmin={isAdmin} />
 
       <main className="relative">
-        <LogoMarquee />
         <HomeHero signedIn={signedIn} isAdmin={isAdmin} />
+        <LogoMarquee />
         <HomeFeatures />
         <HomeHowItWorks />
         <HomePreview />
