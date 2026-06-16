@@ -65,6 +65,18 @@ export function SiteHeader({ signedIn, isAdmin }: Props) {
           >
             FAQ
           </Link>
+          <Link
+            href="/about"
+            className="transition hover:text-[var(--ink-strong)]"
+          >
+            About
+          </Link>
+          <Link
+            href="/contact"
+            className="transition hover:text-[var(--ink-strong)]"
+          >
+            Contact
+          </Link>
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
@@ -142,6 +154,8 @@ export function SiteHeader({ signedIn, isAdmin }: Props) {
                   ["Use cases", "/use-cases"],
                   ["Pricing", "/pricing"],
                   ["FAQ", "/faq"],
+                  ["About", "/about"],
+                  ["Contact", "/contact"],
                 ].map(([label, href]) => (
                   <Link
                     key={href}
