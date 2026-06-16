@@ -8,6 +8,7 @@ import {
   XCircle,
   Trash2,
   UserPlus,
+  Users,
   X,
   Eye,
 } from "lucide-react";
@@ -80,16 +81,24 @@ export function ProspectsManager({
 
   return (
     <div className="surface-card p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-[var(--ink-strong)]">
-            Prospects ({initialProspects.length})
-          </h2>
-          <p className="text-xs text-[var(--ink-muted)]">
-            {counts.pending} pending · {counts.inProgress} in progress ·{" "}
-            {counts.replied} replied · {counts.bounced} bounced ·{" "}
-            {counts.completed} completed
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+            <Users className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-subtle)]">
+              Prospects
+            </div>
+            <h2 className="mt-0.5 text-base font-semibold tabular-nums text-[var(--ink-strong)]">
+              {initialProspects.length} in this campaign
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
+              {counts.pending} pending · {counts.inProgress} in progress ·{" "}
+              {counts.replied} replied · {counts.bounced} bounced ·{" "}
+              {counts.completed} completed
+            </p>
+          </div>
         </div>
         <Button
           type="button"
@@ -113,9 +122,11 @@ export function ProspectsManager({
       ) : null}
 
       {initialProspects.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-sunken)]/40 p-6 text-center">
-          <UserPlus className="mx-auto h-7 w-7 text-[var(--ink-subtle)]" />
-          <p className="mt-2 text-sm text-[var(--ink-muted)]">
+        <div className="mt-5 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-sunken)]/40 p-8 text-center">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+            <UserPlus className="h-5 w-5" />
+          </div>
+          <p className="mx-auto mt-3 max-w-sm text-sm text-[var(--ink-muted)]">
             No prospects yet — add some from the source niche above to get going.
           </p>
         </div>

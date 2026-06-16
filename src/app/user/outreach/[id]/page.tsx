@@ -210,28 +210,35 @@ export default async function CampaignDetailPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <Link
-            href="/user/outreach"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--ink-muted)] transition hover:text-[var(--brand-700)]"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            All campaigns
-          </Link>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
-              {campaign.name}
-            </h1>
-            <StatusBadge status={campaign.status} />
+      <div>
+        <Link
+          href="/user/outreach"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--ink-muted)] transition hover:text-[var(--brand-700)]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          All campaigns
+        </Link>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+              Campaign command center
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink-strong)] sm:text-3xl">
+                {campaign.name}
+              </h1>
+              <StatusBadge status={campaign.status} />
+            </div>
+            {niche ? (
+              <p className="mt-2 text-sm text-[var(--ink-muted)]">
+                Source niche{" "}
+                <span className="font-medium capitalize text-[var(--ink-strong)]">
+                  {niche.keyword}
+                </span>{" "}
+                · {niche.location}
+              </p>
+            ) : null}
           </div>
-          {niche ? (
-            <p className="mt-1 text-sm text-[var(--ink-muted)]">
-              Source:{" "}
-              <span className="capitalize">{niche.keyword}</span> ·{" "}
-              {niche.location}
-            </p>
-          ) : null}
         </div>
       </div>
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, GripVertical, AlertTriangle, Check } from "lucide-react";
+import { Plus, Trash2, AlertTriangle, Check, Mail, Clock } from "lucide-react";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { EMAIL_TEMPLATES, getTemplate } from "@/lib/email-templates";
@@ -127,16 +127,23 @@ export function SequenceEditor({
 
   return (
     <div className="surface-card p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold text-[var(--ink-strong)]">
-            Sequence
-          </h2>
-          <p className="text-xs text-[var(--ink-muted)]">
-            Step 1 sends immediately when a prospect enters the campaign.
-            Each follow-up waits the configured number of days after the
-            previous step.
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+            <Mail className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-subtle)]">
+              Sequence
+            </div>
+            <h2 className="mt-0.5 text-base font-semibold text-[var(--ink-strong)]">
+              {steps.length} step{steps.length === 1 ? "" : "s"}
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
+              Step 1 sends immediately when a prospect enters the campaign. Each
+              follow-up waits the configured delay after the previous step.
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {savedAt && Date.now() - savedAt < 4000 ? (
@@ -164,7 +171,11 @@ export function SequenceEditor({
         </div>
       ) : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="relative mt-5 space-y-3 pl-9">
+        <span
+          aria-hidden
+          className="absolute left-[14px] top-2 bottom-12 w-px bg-[var(--border)]"
+        />
         <AnimatePresence initial={false}>
           {steps.map((s, idx) => (
             <motion.div
@@ -173,20 +184,23 @@ export function SequenceEditor({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18 }}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] p-4"
+              className="relative rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] p-4 shadow-[var(--shadow-xs)]"
             >
+              <span className="absolute -left-9 top-4 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[11px] font-bold tabular-nums text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+                {idx + 1}
+              </span>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <GripVertical className="h-3.5 w-3.5 text-[var(--ink-subtle)]" />
-                  <span className="inline-flex items-center justify-center rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[11px] font-semibold text-[var(--brand-700)]">
+                  <span className="text-sm font-semibold text-[var(--ink-strong)]">
                     Step {idx + 1}
                   </span>
                   {idx === 0 ? (
-                    <span className="text-[11px] text-[var(--ink-subtle)]">
-                      sends immediately on start
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--success-700)]">
+                      Sends immediately
                     </span>
                   ) : (
-                    <div className="flex items-center gap-1.5 text-[11px] text-[var(--ink-subtle)]">
+                    <div className="flex items-center gap-1.5 rounded-full bg-[var(--surface-sunken)] px-2 py-1 text-[11px] text-[var(--ink-muted)]">
+                      <Clock className="h-3 w-3 text-[var(--ink-subtle)]" />
                       <span>Wait</span>
                       <input
                         type="number"
@@ -200,7 +214,7 @@ export function SequenceEditor({
                             Math.max(0, Number(e.target.value) || 0)
                           )
                         }
-                        className="w-14 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-center text-[12px]"
+                        className="w-12 rounded-md border border-[var(--border)] bg-[var(--surface)] px-1.5 py-0.5 text-center text-[12px] tabular-nums"
                       />
                       <select
                         value={s.delay_unit ?? "days"}
@@ -228,7 +242,7 @@ export function SequenceEditor({
                     onClick={() => removeStep(idx)}
                     disabled={disabled}
                     aria-label={`Remove step ${idx + 1}`}
-                    className="rounded p-1 text-[var(--ink-subtle)] hover:bg-[var(--danger-50)] hover:text-[var(--danger-700)] disabled:opacity-40"
+                    className="rounded-md p-1 text-[var(--ink-subtle)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-700)] disabled:opacity-40"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -280,7 +294,7 @@ export function SequenceEditor({
           <button
             type="button"
             onClick={addStep}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-sunken)]/40 py-3 text-xs font-medium text-[var(--ink-muted)] transition hover:border-[var(--brand-400)] hover:bg-[var(--brand-50)]/40 hover:text-[var(--brand-700)]"
+            className="relative -ml-9 flex w-[calc(100%+2.25rem)] items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-sunken)]/40 py-3 text-xs font-medium text-[var(--ink-muted)] transition hover:border-[var(--brand-300)] hover:bg-[var(--brand-50)]/40 hover:text-[var(--brand-700)]"
           >
             <Plus className="h-3.5 w-3.5" />
             Add follow-up step

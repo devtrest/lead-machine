@@ -181,8 +181,8 @@ export function CampaignDetail({
   return (
     <div className="space-y-5">
       <div className="surface-card p-5">
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-          <div>
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div className="min-w-0">
             <Input
               label="Campaign name"
               value={name}
@@ -191,7 +191,7 @@ export function CampaignDetail({
               disabled={savingName}
             />
             {nameSavedAt && Date.now() - nameSavedAt < 4000 ? (
-              <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--success-700)]">
+              <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--success-700)]">
                 <Check className="h-3 w-3" /> Saved
               </span>
             ) : null}

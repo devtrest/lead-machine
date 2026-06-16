@@ -86,19 +86,22 @@ export function BillingPanel() {
   }
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-[var(--ink-strong)]">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+          Credit packs
+        </div>
+        <h2 className="mt-1.5 text-xl font-semibold tracking-tight text-[var(--ink-strong)]">
           Buy credits
         </h2>
-        <p className="mt-0.5 text-sm text-[var(--ink-muted)]">
+        <p className="mt-1 text-sm text-[var(--ink-muted)]">
           Pick a credit pack. One-time payment, credits added to your account
           instantly.
         </p>
       </div>
 
       {error ? (
-        <div className="flex items-start gap-2 rounded-xl border border-[var(--danger-100)] bg-[var(--danger-50)] px-3.5 py-2.5 text-sm text-[var(--danger-700)]">
+        <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3.5 py-2.5 text-sm text-[var(--danger-700)]">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
@@ -113,27 +116,25 @@ export function BillingPanel() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.06, duration: 0.32 }}
-            className={`relative flex flex-col rounded-2xl border bg-[var(--surface-elev)] p-6 ${
-              plan.highlighted
-                ? "border-[var(--brand-200)] shadow-[0_18px_40px_rgba(79,70,229,0.10)] ring-1 ring-[var(--brand-100)]"
-                : "border-[var(--border)] shadow-[var(--shadow-xs)]"
+            className={`surface-card relative flex flex-col p-6 ${
+              plan.highlighted ? "ring-2 ring-[var(--brand-500)]" : ""
             }`}
           >
             {plan.highlighted ? (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[var(--brand-700)] to-[var(--sky-500)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white shadow-md">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[var(--brand-600)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[var(--shadow-sm)]">
                 Most popular
               </div>
             ) : null}
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
               {plan.name}
             </div>
             <div className="mt-2 flex items-baseline gap-1.5">
-              <span className="text-3xl font-semibold tracking-tight text-[var(--ink-strong)]">
+              <span className="text-3xl font-semibold tracking-tight tabular-nums text-[var(--ink-strong)]">
                 {plan.price}
               </span>
               <span className="text-xs text-[var(--ink-subtle)]">one-time</span>
             </div>
-            <div className="mt-1 text-sm font-semibold text-[var(--brand-700)]">
+            <div className="mt-1 text-sm font-semibold tabular-nums text-[var(--brand-700)]">
               + {plan.credits.toLocaleString()} credits
             </div>
             <p className="mt-2 text-xs text-[var(--ink-muted)]">{plan.blurb}</p>
@@ -157,9 +158,9 @@ export function BillingPanel() {
               type="button"
               onClick={() => purchase(plan.id)}
               disabled={busy !== null}
-              className={`mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
+              className={`mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
                 plan.highlighted
-                  ? "bg-[var(--brand-600)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] hover:bg-[var(--brand-700)]"
+                  ? "bg-[var(--brand-600)] text-white hover:bg-[var(--brand-700)]"
                   : "border border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-strong)] hover:bg-[var(--surface-sunken)]"
               }`}
             >
@@ -223,18 +224,15 @@ function TrialCard({ onError }: { onError: (msg: string | null) => void }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32 }}
-      className="relative overflow-hidden rounded-2xl border border-[var(--brand-200)] bg-gradient-to-br from-[var(--brand-50)] via-white to-[var(--sky-50)] p-6 shadow-[0_18px_40px_rgba(79,70,229,0.10)]"
+      className="surface-card relative p-6 ring-2 ring-[var(--brand-500)]"
     >
-      <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-gradient-to-br from-[var(--brand-300)]/30 to-transparent blur-3xl" />
-      <div className="absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-gradient-to-tr from-[var(--sky-300)]/30 to-transparent blur-3xl" />
-
-      <div className="relative grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center">
+      <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center">
         <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-200)] bg-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--brand-700)] backdrop-blur">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-700)]">
             <Sparkles className="h-3 w-3" />
             7-day trial
           </div>
-          <h3 className="mt-2 text-2xl font-bold tracking-tight text-[var(--ink-strong)]">
+          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
             Try Lead Machine for{" "}
             <span className="text-[var(--brand-700)]">$1</span>
           </h3>
@@ -244,7 +242,7 @@ function TrialCard({ onError }: { onError: (msg: string | null) => void }) {
           </p>
 
           <div className="mt-4 space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
               Pick the plan to upgrade to
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
@@ -255,22 +253,22 @@ function TrialCard({ onError }: { onError: (msg: string | null) => void }) {
                     key={p.id}
                     type="button"
                     onClick={() => setPicked(p.id)}
-                    className={`flex flex-col items-start rounded-xl border px-3 py-2.5 text-left transition ${
+                    className={`flex flex-col items-start rounded-lg border px-3 py-2.5 text-left transition ${
                       active
-                        ? "border-[var(--brand-500)] bg-white shadow-[0_2px_10px_rgba(79,70,229,0.18)] ring-2 ring-[var(--brand-500)]/20"
-                        : "border-[var(--border)] bg-white/70 hover:border-[var(--brand-300)]"
+                        ? "border-[var(--brand-500)] bg-[var(--brand-50)] ring-2 ring-[var(--brand-500)]"
+                        : "border-[var(--border)] bg-[var(--surface-elev)] hover:border-[var(--border-strong)]"
                     }`}
                   >
-                    <div className="flex w-full items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[var(--ink-subtle)]">
+                    <div className="flex w-full items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
                       {p.name}
                       {active ? (
                         <Check className="h-3 w-3 text-[var(--brand-700)]" />
                       ) : null}
                     </div>
-                    <div className="mt-1 text-sm font-semibold text-[var(--ink-strong)]">
+                    <div className="mt-1 text-sm font-semibold tabular-nums text-[var(--ink-strong)]">
                       {p.price}
                     </div>
-                    <div className="text-[10px] text-[var(--ink-muted)]">
+                    <div className="text-[10px] tabular-nums text-[var(--ink-muted)]">
                       {p.credits.toLocaleString()} credits
                     </div>
                   </button>
@@ -285,7 +283,7 @@ function TrialCard({ onError }: { onError: (msg: string | null) => void }) {
             type="button"
             onClick={startTrial}
             disabled={busy}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.30)] transition hover:bg-[var(--brand-700)] disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
           >
             {busy ? (
               <Loader2 className="h-4 w-4 animate-spin" />

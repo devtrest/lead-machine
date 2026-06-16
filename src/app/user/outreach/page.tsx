@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Mail, Sparkles, ArrowRight } from "lucide-react";
+import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { OutreachDashboard } from "@/components/outreach/OutreachDashboard";
 
@@ -211,42 +211,29 @@ export default async function OutreachListPage() {
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface-elev)] px-6 py-8 md:px-10 md:py-10">
-        <div
-          className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-55 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-gradient-to-br from-[var(--sky-200)] to-[var(--brand-100)] opacity-45 blur-3xl"
-          aria-hidden
-        />
-        <div className="relative flex flex-wrap items-end justify-between gap-4">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)] backdrop-blur">
-              <Mail className="h-3 w-3" />
-              Email outreach
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-[40px] md:leading-tight">
-              Multi-step sequences on{" "}
-              <span className="brand-text-gradient">autopilot</span>
-            </h1>
-            <p className="mt-2 text-sm text-[var(--ink-muted)] md:text-base">
-              Pull leads from a campaign, build a sequence, hit start. The
-              worker rotates senders, respects send windows, and stops when
-              replies come in.
-            </p>
+      {/* Page header */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            Email outreach
           </div>
-          <Link
-            href="/user/outreach/new"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-5 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(79,70,229,0.30)] transition hover:bg-[var(--brand-700)]"
-          >
-            <Sparkles className="h-4 w-4" />
-            New email campaign
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-3xl">
+            Campaigns
+          </h1>
+          <p className="mt-1.5 max-w-2xl text-sm text-[var(--ink-muted)]">
+            Pull leads from a campaign, build a sequence, hit start. The worker
+            rotates senders, respects send windows, and stops when replies come
+            in.
+          </p>
         </div>
-      </section>
+        <Link
+          href="/user/outreach/new"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-xs)] transition hover:bg-[var(--brand-700)]"
+        >
+          <Plus className="h-4 w-4" />
+          New campaign
+        </Link>
+      </header>
 
       <OutreachDashboard heroStats={heroStats} campaigns={campaigns} />
     </div>

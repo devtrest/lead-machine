@@ -258,18 +258,18 @@ export function CampaignWizard({
 
 function StepIndicator({ currentStep }: { currentStep: number }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="surface-card flex items-center gap-2 px-4 py-3.5">
       {STEP_LABELS.map((label, i) => {
         const isDone = i < currentStep;
         const isCurrent = i === currentStep;
         return (
-          <div key={label} className="flex flex-1 items-center gap-2">
+          <div key={label} className="flex flex-1 items-center gap-2.5">
             <div
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition ${
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums transition ${
                 isDone
-                  ? "bg-[var(--brand-600)] text-white"
+                  ? "bg-[var(--brand-600)] text-white shadow-[var(--shadow-xs)]"
                   : isCurrent
-                    ? "bg-[var(--brand-50)] text-[var(--brand-700)] ring-2 ring-[var(--brand-500)]"
+                    ? "bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-2 ring-[var(--brand-500)]/40"
                     : "bg-[var(--surface-sunken)] text-[var(--ink-subtle)]"
               }`}
             >
@@ -286,7 +286,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                 {label}
               </div>
               {i < STEP_LABELS.length - 1 ? (
-                <div className="mt-1 h-0.5 w-full rounded-full bg-[var(--border)]">
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
                   <motion.div
                     initial={{ width: "0%" }}
                     animate={{ width: isDone ? "100%" : "0%" }}
@@ -312,15 +312,12 @@ function StepBasics({
 }) {
   return (
     <div className="surface-card space-y-4 p-5">
-      <div>
-        <h2 className="text-base font-semibold text-[var(--ink-strong)]">
-          Name your campaign
-        </h2>
-        <p className="mt-1 text-xs text-[var(--ink-muted)]">
-          Just a label so you can find it later. Example: &quot;Q3 dentist
-          outreach&quot;.
-        </p>
-      </div>
+      <WizardSectionHeading
+        icon={<FileText className="h-4 w-4" />}
+        eyebrow="Step 1 · Basics"
+        title="Name your campaign"
+        description='Just a label so you can find it later. Example: "Q3 dentist outreach".'
+      />
       <Input
         label="Campaign name"
         placeholder="e.g. Q3 dentist outreach"
@@ -328,6 +325,37 @@ function StepBasics({
         onChange={(e) => setName(e.target.value)}
         autoFocus
       />
+    </div>
+  );
+}
+
+function WizardSectionHeading({
+  icon,
+  eyebrow,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  eyebrow: string;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-subtle)]">
+          {eyebrow}
+        </div>
+        <h2 className="mt-0.5 text-base font-semibold text-[var(--ink-strong)]">
+          {title}
+        </h2>
+        {description ? (
+          <p className="mt-1 text-xs text-[var(--ink-muted)]">{description}</p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -352,15 +380,12 @@ function StepProspectLists({
 
   return (
     <div className="surface-card space-y-4 p-5">
-      <div>
-        <h2 className="text-base font-semibold text-[var(--ink-strong)]">
-          Pick prospect lists
-        </h2>
-        <p className="mt-1 text-xs text-[var(--ink-muted)]">
-          Each list is a niche you scraped earlier. Tick the folders you want
-          to email. Only leads with emails get imported.
-        </p>
-      </div>
+      <WizardSectionHeading
+        icon={<Folder className="h-4 w-4" />}
+        eyebrow="Step 2 · Prospect lists"
+        title="Pick prospect lists"
+        description="Each list is a niche you scraped earlier. Tick the folders you want to email. Only leads with emails get imported."
+      />
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {prospectLists.map((l) => {
@@ -471,33 +496,37 @@ function StepSequence({
 
   return (
     <div className="surface-card space-y-4 p-5">
-      <div>
-        <h2 className="text-base font-semibold text-[var(--ink-strong)]">
-          Build the sequence
-        </h2>
-        <p className="mt-1 text-xs text-[var(--ink-muted)]">
-          Step 1 sends as soon as the campaign starts. Follow-ups wait the
-          configured number of days after the previous send.
-        </p>
-      </div>
+      <WizardSectionHeading
+        icon={<Mail className="h-4 w-4" />}
+        eyebrow="Step 3 · Sequence"
+        title="Build the sequence"
+        description="Step 1 sends as soon as the campaign starts. Follow-ups wait the configured delay after the previous send."
+      />
 
-      <div className="space-y-3">
+      <div className="relative space-y-3 pl-9">
+        <span
+          aria-hidden
+          className="absolute left-[14px] top-2 bottom-12 w-px bg-[var(--border)]"
+        />
         {sequence.map((s, i) => (
           <div
             key={i}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] p-4"
+            className="relative rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] p-4 shadow-[var(--shadow-xs)]"
           >
+            <span className="absolute -left-9 top-4 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[11px] font-bold tabular-nums text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+              {i + 1}
+            </span>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="inline-flex h-6 items-center justify-center rounded-full bg-[var(--brand-50)] px-2 text-[11px] font-bold text-[var(--brand-700)]">
+                <span className="text-sm font-semibold text-[var(--ink-strong)]">
                   Step {i + 1}
                 </span>
                 {i === 0 ? (
-                  <span className="text-[11px] text-[var(--ink-subtle)]">
-                    sends immediately
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--success-700)]">
+                    Sends immediately
                   </span>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--ink-subtle)]">
+                  <div className="flex items-center gap-1.5 rounded-full bg-[var(--surface-sunken)] px-2 py-1 text-[11px] text-[var(--ink-muted)]">
                     Wait
                     <input
                       type="number"
@@ -576,7 +605,7 @@ function StepSequence({
         <button
           type="button"
           onClick={addStep}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-sunken)]/40 py-3 text-xs font-medium text-[var(--ink-muted)] transition hover:border-[var(--brand-400)] hover:bg-[var(--brand-50)]/40 hover:text-[var(--brand-700)]"
+          className="relative -ml-9 flex w-[calc(100%+2.25rem)] items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-sunken)]/40 py-3 text-xs font-medium text-[var(--ink-muted)] transition hover:border-[var(--brand-300)] hover:bg-[var(--brand-50)]/40 hover:text-[var(--brand-700)]"
         >
           <Plus className="h-3.5 w-3.5" />
           Add follow-up step
@@ -630,17 +659,13 @@ function StepSendersAndStart({
 
   return (
     <div className="space-y-4">
-      <div className="surface-card space-y-3 p-5">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--ink-strong)]">
-            Daily send pace
-          </h2>
-          <p className="mt-1 text-xs text-[var(--ink-muted)]">
-            How many emails this campaign sends per day, total across all
-            steps + senders. Slower pace = better deliverability + lower spam
-            risk.
-          </p>
-        </div>
+      <div className="surface-card space-y-4 p-5">
+        <WizardSectionHeading
+          icon={<Send className="h-4 w-4" />}
+          eyebrow="Step 4 · Pace"
+          title="Daily send pace"
+          description="How many emails this campaign sends per day, total across all steps + senders. Slower pace = better deliverability + lower spam risk."
+        />
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[160px] flex-1">
             <Input
@@ -686,16 +711,13 @@ function StepSendersAndStart({
         ) : null}
       </div>
 
-      <div className="surface-card space-y-3 p-5">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--ink-strong)]">
-            Pick sender accounts
-          </h2>
-          <p className="mt-1 text-xs text-[var(--ink-muted)]">
-            The worker rotates across selected accounts to respect Gmail&apos;s
-            ~500/day per-account ceiling and keep sender reputation healthy.
-          </p>
-        </div>
+      <div className="surface-card space-y-4 p-5">
+        <WizardSectionHeading
+          icon={<Users className="h-4 w-4" />}
+          eyebrow="Step 4 · Senders"
+          title="Pick sender accounts"
+          description="The worker rotates across selected accounts to respect Gmail's ~500/day per-account ceiling and keep sender reputation healthy."
+        />
 
         {senders.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--warning-200)] bg-[var(--warning-50)]/40 p-4 text-sm">
@@ -752,40 +774,52 @@ function StepSendersAndStart({
         )}
       </div>
 
-      <div className="surface-card space-y-3 p-5">
-        <h2 className="text-base font-semibold text-[var(--ink-strong)]">
-          Review
-        </h2>
-        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-          <div>
-            <dt className="text-xs text-[var(--ink-subtle)]">Name</dt>
-            <dd className="font-medium text-[var(--ink-strong)]">
+      <div className="surface-card space-y-4 p-5">
+        <WizardSectionHeading
+          icon={<Check className="h-4 w-4" />}
+          eyebrow="Step 4 · Review"
+          title="Review & launch"
+          description="Double-check the setup, then save as a draft or launch right away."
+        />
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--border)] text-sm sm:grid-cols-3">
+          <div className="bg-[var(--surface-elev)] p-3.5">
+            <dt className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+              Name
+            </dt>
+            <dd className="mt-1 truncate font-medium text-[var(--ink-strong)]">
               {summary.name || "—"}
             </dd>
           </div>
-          <div>
-            <dt className="text-xs text-[var(--ink-subtle)]">Prospects</dt>
-            <dd className="font-medium text-[var(--ink-strong)]">
+          <div className="bg-[var(--surface-elev)] p-3.5">
+            <dt className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+              Prospects
+            </dt>
+            <dd className="mt-1 font-medium tabular-nums text-[var(--ink-strong)]">
               {summary.prospectsCount} from {summary.listsCount} list
               {summary.listsCount === 1 ? "" : "s"}
             </dd>
           </div>
-          <div>
-            <dt className="text-xs text-[var(--ink-subtle)]">Sequence</dt>
-            <dd className="font-medium text-[var(--ink-strong)]">
-              <FileText className="-mt-0.5 mr-1 inline h-3.5 w-3.5 text-[var(--ink-muted)]" />
+          <div className="bg-[var(--surface-elev)] p-3.5">
+            <dt className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+              Sequence
+            </dt>
+            <dd className="mt-1 font-medium tabular-nums text-[var(--ink-strong)]">
               {summary.stepsCount} step{summary.stepsCount === 1 ? "" : "s"}
             </dd>
           </div>
-          <div>
-            <dt className="text-xs text-[var(--ink-subtle)]">Senders</dt>
-            <dd className="font-medium text-[var(--ink-strong)]">
+          <div className="bg-[var(--surface-elev)] p-3.5">
+            <dt className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+              Senders
+            </dt>
+            <dd className="mt-1 font-medium tabular-nums text-[var(--ink-strong)]">
               {selectedSenderIds.size} selected
             </dd>
           </div>
-          <div>
-            <dt className="text-xs text-[var(--ink-subtle)]">Daily pace</dt>
-            <dd className="font-medium text-[var(--ink-strong)]">
+          <div className="bg-[var(--surface-elev)] p-3.5">
+            <dt className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+              Daily pace
+            </dt>
+            <dd className="mt-1 font-medium tabular-nums text-[var(--ink-strong)]">
               {dailyLimit}/day
             </dd>
           </div>

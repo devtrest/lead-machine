@@ -37,38 +37,27 @@ export default async function SendersPage() {
         </Link>
       </div>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface-elev)] px-6 py-8 md:px-10 md:py-10">
-        <div
-          className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-55 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-gradient-to-br from-[var(--sky-200)] to-[var(--brand-100)] opacity-45 blur-3xl"
-          aria-hidden
-        />
-        <div className="relative grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-end">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)] backdrop-blur">
-              <AtSign className="h-3 w-3" />
-              Sender accounts
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-[40px] md:leading-tight">
-              Connected{" "}
-              <span className="brand-text-gradient">Gmail senders</span>
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)] md:text-base">
-              The worker rotates across enabled senders to respect Gmail&apos;s
-              ~500/day account ceiling and reduce spam-flag risk. Wrong app
-              passwords are rejected at connection time — no fake-connected
-              state.
-            </p>
+      {/* Page header */}
+      <section className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            <AtSign className="h-3 w-3" />
+            Sender accounts
           </div>
-          <div className="grid grid-cols-3 gap-2.5">
-            <Stat label="Connected" value={(senders ?? []).length} />
-            <Stat label="Active" value={activeCount} accent />
-            <Stat label="Sent today" value={sentToday} />
-          </div>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-3xl">
+            Connected Gmail senders
+          </h1>
+          <p className="mt-2 text-sm text-[var(--ink-muted)]">
+            The worker rotates across enabled senders to respect Gmail&apos;s
+            ~500/day account ceiling and reduce spam-flag risk. Wrong app
+            passwords are rejected at connection time — no fake-connected
+            state.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2.5">
+          <Stat label="Connected" value={(senders ?? []).length} />
+          <Stat label="Active" value={activeCount} accent />
+          <Stat label="Sent today" value={sentToday} />
         </div>
       </section>
 
@@ -105,9 +94,9 @@ function Stat({
 }) {
   return (
     <div
-      className={`rounded-xl border bg-white/80 p-3 text-center backdrop-blur ${
+      className={`min-w-[5.5rem] rounded-lg border bg-[var(--surface-elev)] px-4 py-3 text-center shadow-[var(--shadow-xs)] ${
         accent
-          ? "border-[var(--brand-200)] ring-1 ring-[var(--brand-100)]"
+          ? "border-[var(--brand-200)] ring-1 ring-inset ring-[var(--brand-100)]"
           : "border-[var(--border)]"
       }`}
     >

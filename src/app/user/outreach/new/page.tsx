@@ -74,24 +74,33 @@ export default async function NewCampaignPage() {
           <ArrowLeft className="h-3.5 w-3.5" />
           All campaigns
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
-          New outreach campaign
+        <div className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+          New campaign
+        </div>
+        <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--ink-strong)] sm:text-3xl">
+          Build your outreach sequence
         </h1>
+        <p className="mt-2 text-sm text-[var(--ink-muted)]">
+          Pick prospect lists, craft the steps, attach senders, and launch — all
+          in one flow.
+        </p>
       </div>
 
       {prospectLists.length === 0 ? (
         <div className="surface-card p-10 text-center">
-          <Mail className="mx-auto h-10 w-10 text-[var(--ink-subtle)]" />
-          <h3 className="mt-3 text-base font-semibold text-[var(--ink-strong)]">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+            <Mail className="h-5 w-5" />
+          </div>
+          <h3 className="mt-4 text-base font-semibold text-[var(--ink-strong)]">
             No prospect lists with emails yet
           </h3>
-          <p className="mt-1.5 text-sm text-[var(--ink-muted)]">
+          <p className="mx-auto mt-1.5 max-w-sm text-sm text-[var(--ink-muted)]">
             Generate a campaign first so we have leads with email addresses to
             outreach.
           </p>
           <Link
             href="/user/generate"
-            className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
+            className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-sm)] transition hover:bg-[var(--brand-700)]"
           >
             Generate leads
           </Link>

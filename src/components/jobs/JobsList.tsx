@@ -191,34 +191,33 @@ function StatCard({
   suffix?: React.ReactNode;
 }) {
   const accentBg = {
-    brand: "bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)]",
-    success:
-      "bg-gradient-to-br from-[var(--success-50)] to-[var(--success-100)]",
-    sky: "bg-gradient-to-br from-[var(--sky-100)] to-[var(--brand-100)]",
+    brand: "bg-[var(--brand-50)] ring-1 ring-[var(--brand-100)]",
+    success: "bg-[var(--success-50)] ring-1 ring-[var(--success-100)]",
+    sky: "bg-[var(--sky-100)] ring-1 ring-[var(--sky-200)]",
   }[accent];
   const accentText = {
     brand: "text-[var(--brand-700)]",
     success: "text-[var(--success-700)]",
-    sky: "text-[var(--sky-700)]",
+    sky: "text-[var(--sky-600)]",
   }[accent];
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-      className="surface-card relative overflow-hidden p-5"
+      className="surface-card p-5"
     >
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
             {label}
           </div>
-          <div className="mt-2.5 text-3xl font-bold tracking-tight tabular-nums text-[var(--ink-strong)]">
+          <div className="mt-2.5 text-3xl font-semibold tracking-tight tabular-nums text-[var(--ink-strong)]">
             {value}
           </div>
         </div>
         <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${accentBg} ${accentText}`}
+          className={`flex h-10 w-10 items-center justify-center rounded-lg ${accentBg} ${accentText}`}
         >
           <Icon className="h-5 w-5" />
         </div>
@@ -243,11 +242,11 @@ function Section({
     <section className="space-y-3">
       <div className="flex items-center gap-2">
         <h2
-          className={`text-sm font-semibold ${accent ? "text-[var(--brand-700)]" : "text-[var(--ink-strong)]"}`}
+          className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${accent ? "text-[var(--brand-700)]" : "text-[var(--ink-subtle)]"}`}
         >
           {title}
         </h2>
-        <span className="rounded-full bg-[var(--surface-sunken)] px-2 py-0.5 text-[10px] font-bold text-[var(--ink-muted)]">
+        <span className="rounded-full bg-[var(--surface-sunken)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--ink-muted)]">
           {count}
         </span>
       </div>
@@ -271,16 +270,16 @@ function RunCard({
     new Date(run.finished_at ?? Date.now()).getTime() -
     new Date(run.started_at).getTime();
 
-  // Media-player style: solid brand circle for every state, like a play
-  // button on a video. Non-interactive — just a visual identity for the run.
-  // The icon inside varies by state.
+  // Refined icon tile — soft tinted square per state, not a heavy solid circle.
   const iconTile =
-    "bg-[var(--brand-600)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.35)] ring-4 ring-[var(--brand-100)]";
+    variant === "running"
+      ? "bg-[var(--brand-50)] text-[var(--brand-700)] ring-1 ring-[var(--brand-100)]"
+      : variant === "completed"
+        ? "bg-[var(--success-50)] text-[var(--success-700)] ring-1 ring-[var(--success-100)]"
+        : "bg-[var(--danger-50)] text-[var(--danger-700)] ring-1 ring-[var(--danger-100)]";
 
   const cardRing =
-    variant === "running"
-      ? "ring-1 ring-[var(--brand-100)]"
-      : "ring-1 ring-[var(--border)]";
+    variant === "running" ? "ring-1 ring-[var(--brand-100)]" : "";
 
   return (
     <motion.article
@@ -289,22 +288,20 @@ function RunCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className={`relative overflow-hidden rounded-2xl bg-[var(--surface-elev)] ${cardRing} shadow-[0_1px_3px_rgba(15,23,42,0.04),0_4px_24px_rgba(15,23,42,0.04)]`}
+      className={`surface-card relative overflow-hidden ${cardRing}`}
     >
       <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center">
         {/* Left: icon + identity + progress */}
         <div className="space-y-3">
           <div className="flex items-start gap-3">
             <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${iconTile}`}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${iconTile}`}
             >
               {variant === "running" ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : variant === "completed" ? (
-                // Slight right-translate so the play triangle visually centers
-                // inside the circular tile.
                 <Play
-                  className="h-5 w-5 translate-x-[1px]"
+                  className="h-4 w-4 translate-x-[1px]"
                   fill="currentColor"
                   strokeWidth={0}
                 />
@@ -364,7 +361,7 @@ function RunCard({
           {variant !== "failed" && run.result_count > 0 ? (
             <Link
               href={`/user/leads?campaign=${run.id}`}
-              className="inline-flex items-center gap-1 rounded-xl bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white shadow-[0_2px_10px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
+              className="inline-flex items-center gap-1 rounded-lg bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[var(--brand-700)]"
             >
               View leads
               <ArrowRight className="h-3 w-3" />
@@ -457,8 +454,8 @@ function StatusPill({
 function EmptyState() {
   return (
     <div className="surface-card flex flex-col items-center p-12 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] text-[var(--brand-700)]">
-        <Sparkles className="h-6 w-6" />
+      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--brand-50)] text-[var(--brand-700)] ring-1 ring-[var(--brand-100)]">
+        <Sparkles className="h-5 w-5" />
       </div>
       <h3 className="mt-4 text-lg font-semibold text-[var(--ink-strong)]">
         No scraping campaigns yet
@@ -469,7 +466,7 @@ function EmptyState() {
       </p>
       <Link
         href="/user/generate"
-        className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_2px_10px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
+        className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
       >
         <Sparkles className="h-4 w-4" />
         Start a scraping campaign

@@ -1,7 +1,6 @@
 import {
   CreditCard,
   User as UserIcon,
-  Settings as SettingsIcon,
   Mail,
   Calendar,
   Shield,
@@ -48,22 +47,17 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface-elev)] px-6 py-8 md:px-10 md:py-10">
-        <div
-          className="absolute -right-24 -top-24 h-56 w-56 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-50 blur-3xl"
-          aria-hidden
-        />
-        <div className="relative flex flex-wrap items-center gap-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--brand-600)] to-[var(--sky-500)] text-2xl font-bold text-white shadow-[0_8px_24px_rgba(79,70,229,0.30)] ring-4 ring-white/60">
+      {/* Page header */}
+      <div className="border-b border-[var(--border)] pb-6">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+          Settings
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--brand-600)] text-xl font-semibold text-white shadow-[var(--shadow-sm)]">
             {initial}
           </div>
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)] backdrop-blur">
-              <SettingsIcon className="h-3 w-3" />
-              Settings
-            </div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
               {fullName ?? "Your account"}
             </h1>
             <p className="mt-0.5 truncate text-sm text-[var(--ink-muted)]">
@@ -71,12 +65,12 @@ export default async function SettingsPage() {
             </p>
           </div>
         </div>
-      </section>
+      </div>
 
       <div className="grid gap-6 md:grid-cols-[1.5fr_1fr]">
         {/* Profile details */}
         <section className="surface-card p-6">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
             <UserIcon className="h-3.5 w-3.5" />
             Profile
           </div>
@@ -107,15 +101,11 @@ export default async function SettingsPage() {
 
         {/* Plan + Sender shortcut */}
         <div className="space-y-6">
-          <section className="surface-card relative overflow-hidden p-6">
-            <div
-              className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-25 blur-2xl"
-              aria-hidden
-            />
-            <div className="relative">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+          <section className="surface-card p-6">
+            <div>
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
                 <CreditCard className="h-3.5 w-3.5" />
-                Plan & credits
+                Plan &amp; credits
               </div>
               <div className="mt-4 flex items-baseline gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -125,7 +115,7 @@ export default async function SettingsPage() {
                   aria-hidden
                   className="h-8 w-8"
                 />
-                <div className="text-3xl font-bold tabular-nums text-[var(--ink-strong)]">
+                <div className="text-3xl font-semibold tabular-nums text-[var(--ink-strong)]">
                   {credits.toLocaleString()}
                 </div>
                 <div className="text-sm text-[var(--ink-muted)]">credits</div>
@@ -152,7 +142,7 @@ export default async function SettingsPage() {
               ) : null}
               <Link
                 href="/user/billing"
-                className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
+                className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
               >
                 Manage billing
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -161,7 +151,7 @@ export default async function SettingsPage() {
           </section>
 
           <section className="surface-card p-5">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
               <AtSign className="h-3.5 w-3.5" />
               Sender accounts
             </div>
@@ -181,8 +171,8 @@ export default async function SettingsPage() {
       </div>
 
       {/* Danger zone */}
-      <section className="rounded-2xl border border-[var(--danger-100)] bg-[var(--danger-50)]/50 p-6">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--danger-700)]">
+      <section className="rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] p-6">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--danger-700)]">
           <LogOut className="h-3.5 w-3.5" />
           Sign out
         </div>
@@ -192,7 +182,7 @@ export default async function SettingsPage() {
         </p>
         <Link
           href="/login"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-[var(--danger-200)] bg-white px-4 py-2 text-sm font-semibold text-[var(--danger-700)] transition hover:bg-[var(--danger-50)]"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[var(--danger-100)] bg-[var(--surface-elev)] px-4 py-2 text-sm font-semibold text-[var(--danger-700)] transition hover:bg-[var(--danger-50)]"
         >
           Go to login
         </Link>
@@ -213,8 +203,8 @@ function Field({
   capitalize?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-sunken)]/40 px-3.5 py-2.5">
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-sunken)] px-3.5 py-2.5">
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-subtle)]">
         <span className="text-[var(--ink-muted)]">{icon}</span>
         {label}
       </div>

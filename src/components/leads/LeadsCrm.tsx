@@ -295,12 +295,18 @@ export function LeadsCrm() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+            {campaign ? "Campaign" : "CRM"}
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
             {campaign ? "Campaign leads" : "Leads"}
           </h1>
           <p className="mt-1 text-sm text-[var(--ink-muted)]">
-            {filtered.length} of {leads.length} leads
-            {selected.size > 0 ? ` · ${selected.size} selected` : ""}
+            <span className="tabular-nums">{filtered.length}</span> of{" "}
+            <span className="tabular-nums">{leads.length}</span> leads
+            {selected.size > 0 ? (
+              <span className="tabular-nums"> · {selected.size} selected</span>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -309,9 +315,9 @@ export function LeadsCrm() {
               type="button"
               onClick={() => setExportMenuOpen((v) => !v)}
               disabled={exportRows.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] px-3.5 py-2 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-3.5 py-2 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)] disabled:opacity-50"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-3.5 w-3.5 text-[var(--ink-muted)]" />
               Export {selected.size > 0 ? `(${selected.size})` : "all"}
             </button>
             {exportMenuOpen ? (
@@ -323,7 +329,7 @@ export function LeadsCrm() {
                 <motion.div
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="absolute right-0 top-full z-40 mt-2 w-52 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] shadow-lg"
+                  className="absolute right-0 top-full z-40 mt-2 w-52 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] shadow-[var(--shadow-md)]"
                 >
                   <button
                     type="button"
@@ -353,7 +359,7 @@ export function LeadsCrm() {
           </div>
           <Link
             href="/user/generate"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white shadow-[0_2px_10px_rgba(79,70,229,0.20)] transition hover:bg-[var(--brand-700)]"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[var(--brand-700)]"
           >
             <Sparkles className="h-3.5 w-3.5" />
             Generate
@@ -365,14 +371,14 @@ export function LeadsCrm() {
         <motion.div
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--brand-100)] bg-[var(--brand-50)] px-4 py-3"
+          className="surface-card flex flex-wrap items-center justify-between gap-3 px-4 py-3"
         >
-          <div className="flex items-start gap-2.5">
-            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-600)] text-white">
-              <Layers className="h-3.5 w-3.5" />
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--brand-100)] bg-[var(--brand-50)] text-[var(--brand-700)]">
+              <Layers className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--brand-700)]">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
                 Filtered campaign
               </div>
               <div className="text-sm font-semibold text-[var(--ink-strong)]">
@@ -384,7 +390,7 @@ export function LeadsCrm() {
               </div>
               <div className="text-xs text-[var(--ink-subtle)]">
                 {new Date(campaign.started_at).toLocaleString()} ·{" "}
-                {campaign.result_count} leads
+                <span className="tabular-nums">{campaign.result_count}</span> leads
               </div>
             </div>
           </div>
@@ -398,7 +404,7 @@ export function LeadsCrm() {
             <button
               type="button"
               onClick={clearCampaign}
-              className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-100)]"
+              className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-50)]"
             >
               <X className="h-3 w-3" /> Clear filter
             </button>
@@ -406,7 +412,7 @@ export function LeadsCrm() {
         </motion.div>
       ) : null}
 
-      <div className="surface-card p-4">
+      <div className="surface-card p-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-subtle)]" />
@@ -414,7 +420,7 @@ export function LeadsCrm() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, address, category, website…"
-              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] py-2.5 pl-9 pr-9 text-sm text-[var(--ink-strong)] outline-none placeholder:text-[var(--ink-subtle)] focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] py-2 pl-9 pr-9 text-sm text-[var(--ink-strong)] outline-none placeholder:text-[var(--ink-subtle)] focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
             />
             {search ? (
               <button
@@ -472,7 +478,7 @@ export function LeadsCrm() {
             leads.length === 0 ? (
               <Link
                 href="/user/generate"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
               >
                 <Sparkles className="h-4 w-4" />
                 Generate leads
@@ -484,7 +490,7 @@ export function LeadsCrm() {
                   setSearch("");
                   setFilter("all");
                 }}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] px-4 py-2 text-sm font-medium text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-4 py-2 text-sm font-medium text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
               >
                 Reset filters
               </button>
@@ -504,8 +510,8 @@ export function LeadsCrm() {
                 <col className="hidden md:table-column w-[110px]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--surface-sunken)]/60">
-                  <th className="px-3 py-3">
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-sunken)]">
+                  <th className="px-4 py-2.5">
                     <input
                       type="checkbox"
                       checked={allOnPageSelected}
@@ -520,13 +526,13 @@ export function LeadsCrm() {
                     dir={sortDir}
                     onClick={() => toggleSort("name")}
                   />
-                  <th className="hidden md:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
+                  <th className="hidden md:table-cell px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
                     Category
                   </th>
-                  <th className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
+                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
                     Contact
                   </th>
-                  <th className="hidden lg:table-cell px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
+                  <th className="hidden lg:table-cell px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
                     Website
                   </th>
                   <SortHeader
@@ -550,15 +556,13 @@ export function LeadsCrm() {
                   ) as string[];
                   const isSelected = selected.has(lead.id);
                   return (
-                    <motion.tr
+                    <tr
                       key={lead.id}
-                      initial={false}
-                      whileHover={{ backgroundColor: "rgba(99,102,241,0.04)" }}
                       onClick={() => setOpenLead(lead)}
-                      className={`cursor-pointer transition ${isSelected ? "bg-[var(--brand-50)]/60" : ""}`}
+                      className={`cursor-pointer transition-colors ${isSelected ? "bg-[var(--brand-50)]/60" : "hover:bg-[var(--surface-sunken)]/50"}`}
                     >
                       <td
-                        className="px-3 py-3"
+                        className="px-4 py-3"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <input
@@ -568,7 +572,7 @@ export function LeadsCrm() {
                           className="h-4 w-4 rounded border-[var(--border-strong)] accent-[var(--brand-600)]"
                         />
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-3">
                         <div className="truncate font-medium text-[var(--ink-strong)]">
                           {lead.name}
                         </div>
@@ -579,15 +583,15 @@ export function LeadsCrm() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="hidden md:table-cell px-3 py-3 truncate text-xs text-[var(--ink-muted)]">
+                      <td className="hidden md:table-cell px-4 py-3 truncate text-xs text-[var(--ink-muted)]">
                         {lead.category ?? "—"}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1.5">
                           {phones.length > 0 ? (
                             <span
                               title={phones.join(", ")}
-                              className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[11px] font-medium text-[var(--brand-700)]"
+                              className="inline-flex items-center gap-1 rounded-md bg-[var(--brand-50)] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[var(--brand-700)]"
                             >
                               <Phone className="h-3 w-3" />
                               {phones.length}
@@ -596,7 +600,7 @@ export function LeadsCrm() {
                           {emails.length > 0 ? (
                             <span
                               title={emails.join(", ")}
-                              className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-50)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent-700)]"
+                              className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-50)] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[var(--accent-700)]"
                             >
                               <Mail className="h-3 w-3" />
                               {emails.length}
@@ -605,7 +609,7 @@ export function LeadsCrm() {
                           {lead.website_url ? (
                             <span
                               title={lead.website_url}
-                              className="inline-flex items-center gap-1 rounded-full bg-[var(--success-50)] px-2 py-0.5 text-[11px] font-medium text-[var(--success-700)] lg:hidden"
+                              className="inline-flex items-center gap-1 rounded-md bg-[var(--success-50)] px-2 py-0.5 text-[11px] font-medium text-[var(--success-700)] lg:hidden"
                             >
                               <Globe className="h-3 w-3" />
                             </span>
@@ -616,7 +620,7 @@ export function LeadsCrm() {
                         </div>
                       </td>
                       <td
-                        className="hidden lg:table-cell px-3 py-3"
+                        className="hidden lg:table-cell px-4 py-3"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {lead.website_url ? (
@@ -624,7 +628,7 @@ export function LeadsCrm() {
                             href={lead.website_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 truncate text-xs font-medium text-[var(--brand-700)] hover:underline"
+                            className="inline-flex max-w-full items-center gap-1 truncate text-xs font-medium text-[var(--brand-700)] hover:underline"
                           >
                             <Globe className="h-3 w-3 shrink-0" />
                             <span className="truncate">
@@ -635,10 +639,10 @@ export function LeadsCrm() {
                           <span className="text-xs text-[var(--ink-subtle)]">—</span>
                         )}
                       </td>
-                      <td className="hidden md:table-cell whitespace-nowrap px-3 py-3 text-right text-xs text-[var(--ink-subtle)]">
+                      <td className="hidden md:table-cell whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums text-[var(--ink-subtle)]">
                         {new Date(lead.created_at).toLocaleDateString()}
                       </td>
-                    </motion.tr>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -646,8 +650,8 @@ export function LeadsCrm() {
           </div>
 
           {totalPages > 1 ? (
-            <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--surface-sunken)]/50 px-5 py-3 text-xs text-[var(--ink-muted)]">
-              <span>
+            <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--surface-sunken)]/50 px-4 py-3 text-xs text-[var(--ink-muted)]">
+              <span className="tabular-nums">
                 Page {page} of {totalPages}
               </span>
               <div className="flex items-center gap-1">
@@ -699,10 +703,10 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
         active
-          ? "border-[var(--brand-600)] bg-[var(--brand-600)] text-white shadow-[0_2px_8px_rgba(79,70,229,0.25)]"
-          : "border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-muted)] hover:border-[var(--brand-200)] hover:text-[var(--brand-700)]"
+          ? "border-[var(--brand-200)] bg-[var(--brand-50)] text-[var(--brand-700)]"
+          : "border-[var(--border)] bg-[var(--surface-elev)] text-[var(--ink-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--ink-strong)]"
       }`}
     >
       {children}
@@ -730,12 +734,12 @@ function SortHeader({
   const active = sortKey === activeKey;
   return (
     <th
-      className={`px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-muted)] ${align === "right" ? "text-right" : ""} ${className}`}
+      className={`px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)] ${align === "right" ? "text-right" : ""} ${className}`}
     >
       <button
         type="button"
         onClick={onClick}
-        className={`inline-flex items-center gap-1 transition hover:text-[var(--ink-strong)] ${active ? "text-[var(--ink-strong)]" : ""}`}
+        className={`inline-flex items-center gap-1 transition hover:text-[var(--ink-strong)] ${align === "right" ? "flex-row-reverse" : ""} ${active ? "text-[var(--ink-strong)]" : ""}`}
       >
         {label}
         {active ? (
@@ -763,7 +767,7 @@ function LeadDetail({ lead }: { lead: Lead }) {
     <div className="space-y-6">
       {lead.category ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--ink-muted)]">
+          <span className="rounded-md border border-[var(--border)] bg-[var(--surface-sunken)] px-2.5 py-1 text-xs font-medium text-[var(--ink-muted)]">
             {lead.category}
           </span>
         </div>
@@ -796,7 +800,7 @@ function LeadDetail({ lead }: { lead: Lead }) {
               <a
                 key={p}
                 href={`tel:${p}`}
-                className="rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-2.5 py-1 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-100)]"
+                className="rounded-md border border-[var(--brand-100)] bg-[var(--brand-50)] px-2.5 py-1 text-xs font-medium tabular-nums text-[var(--brand-700)] transition hover:bg-[var(--brand-100)]"
               >
                 {p}
               </a>
@@ -812,7 +816,7 @@ function LeadDetail({ lead }: { lead: Lead }) {
               <a
                 key={e}
                 href={`mailto:${e}`}
-                className="rounded-full border border-[var(--accent-100)] bg-[var(--accent-50)] px-2.5 py-1 text-xs font-medium text-[var(--accent-700)] transition hover:bg-[var(--accent-100)]"
+                className="rounded-md border border-[var(--accent-100)] bg-[var(--accent-50)] px-2.5 py-1 text-xs font-medium text-[var(--accent-700)] transition hover:bg-[var(--accent-100)]"
               >
                 {e}
               </a>
@@ -826,7 +830,7 @@ function LeadDetail({ lead }: { lead: Lead }) {
           href={lead.maps_url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] px-3.5 py-2 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-3.5 py-2 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
         >
           <MapPin className="h-3.5 w-3.5" />
           Open on Maps

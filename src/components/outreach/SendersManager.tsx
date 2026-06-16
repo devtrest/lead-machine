@@ -124,33 +124,27 @@ export function SendersManager({
       </AnimatePresence>
 
       {initialSenders.length === 0 ? (
-        <div className="surface-card relative overflow-hidden p-12 text-center">
-          <div
-            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-30 blur-3xl"
-            aria-hidden
-          />
-          <div className="relative">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-50)] text-[var(--brand-700)] ring-1 ring-[var(--brand-100)]">
-              <Mail className="h-6 w-6" />
-            </div>
-            <h3 className="mt-4 text-lg font-semibold text-[var(--ink-strong)]">
-              No senders connected
-            </h3>
-            <p className="mx-auto mt-2 max-w-md text-sm text-[var(--ink-muted)]">
-              Connect at least one Gmail account before you can start any
-              outreach campaign. We&apos;ll verify the app password with a
-              real SMTP handshake — wrong creds get rejected instead of
-              fake-saved.
-            </p>
-            <button
-              type="button"
-              onClick={() => setAddOpen(true)}
-              className="mt-6 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-5 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(79,70,229,0.30)] transition hover:bg-[var(--brand-700)]"
-            >
-              <Plus className="h-4 w-4" />
-              Connect your first Gmail
-            </button>
+        <div className="surface-card p-12 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+            <Mail className="h-6 w-6" />
           </div>
+          <h3 className="mt-4 text-lg font-semibold text-[var(--ink-strong)]">
+            No senders connected
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-[var(--ink-muted)]">
+            Connect at least one Gmail account before you can start any
+            outreach campaign. We&apos;ll verify the app password with a
+            real SMTP handshake — wrong creds get rejected instead of
+            fake-saved.
+          </p>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="mt-6 inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-5 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-sm)] transition hover:bg-[var(--brand-700)]"
+          >
+            <Plus className="h-4 w-4" />
+            Connect your first Gmail
+          </button>
         </div>
       ) : (
         <motion.div
@@ -170,21 +164,11 @@ export function SendersManager({
                 show: { opacity: 1, y: 0 },
               }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="surface-card group relative overflow-hidden p-5 transition hover:shadow-[var(--shadow-md)]"
+              className="surface-card group p-5 transition hover:shadow-[var(--shadow-md)]"
             >
-              <div
-                className={`pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full opacity-25 blur-2xl transition group-hover:opacity-45 ${
-                  s.status === "active"
-                    ? "bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)]"
-                    : s.status === "paused"
-                      ? "bg-gradient-to-br from-[var(--warning-200)] to-[var(--accent-100)]"
-                      : "bg-gradient-to-br from-[var(--danger-200)] to-[var(--danger-100)]"
-                }`}
-                aria-hidden
-              />
-              <div className="relative">
+              <div>
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-600)] to-[var(--sky-500)] text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)]">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
                     <Mail className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -245,7 +229,7 @@ export function SendersManager({
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
                     <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-[var(--brand-600)] to-[var(--sky-500)]"
+                      className="h-full rounded-full bg-[var(--brand-600)]"
                       initial={{ width: 0 }}
                       animate={{
                         width: `${Math.min(100, (s.sends_today / Math.max(1, s.daily_limit)) * 100)}%`,

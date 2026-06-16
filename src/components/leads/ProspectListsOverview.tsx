@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Users,
   ArrowRight,
   Search,
   Loader2,
@@ -54,49 +53,44 @@ export function ProspectListsOverview({
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface-elev)] px-6 py-8 md:px-10 md:py-10">
-        <div
-          className="absolute -right-24 -top-24 h-56 w-56 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-50 blur-3xl"
-          aria-hidden
-        />
-        <div className="relative grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-end">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)] backdrop-blur">
-              <Users className="h-3 w-3" />
-              Prospect lists
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-4xl">
-              Your prospect lists by campaign.
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-[var(--ink-muted)]">
-              Every lead campaign you&apos;ve run lives here as its own list.
-              Open a campaign to view, search, and export its prospects.
-            </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+            Prospect lists
           </div>
-          <div className="grid grid-cols-3 gap-2.5">
-            <Stat label="Lists" value={campaigns.length.toLocaleString()} />
-            <Stat label="Leads" value={totalLeads.toLocaleString()} />
-            <Stat label="Contacts" value={(totalEmails + totalPhones).toLocaleString()} />
-          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--ink-strong)]">
+            Your prospect lists by campaign
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--ink-muted)]">
+            Every lead campaign you&apos;ve run lives here as its own list.
+            Open a campaign to view, search, and export its prospects.
+          </p>
+        </div>
+        <div className="flex items-stretch gap-2">
+          <Stat label="Lists" value={campaigns.length.toLocaleString()} />
+          <Stat label="Leads" value={totalLeads.toLocaleString()} />
+          <Stat label="Contacts" value={(totalEmails + totalPhones).toLocaleString()} />
         </div>
       </div>
 
       {/* Search */}
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-subtle)]" />
+      <div className="relative max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-subtle)]" />
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by niche or city…"
-          className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elev)] py-2.5 pl-10 pr-4 text-sm text-[var(--ink-strong)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] py-2 pl-9 pr-4 text-sm text-[var(--ink-strong)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-500)]/20"
         />
       </div>
 
       {/* List */}
       {campaigns.length === 0 ? (
         <div className="surface-card p-12 text-center">
-          <Sparkles className="mx-auto h-10 w-10 text-[var(--brand-700)]" />
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)] text-[var(--brand-700)]">
+            <Sparkles className="h-5 w-5" />
+          </span>
           <h3 className="mt-3 text-base font-semibold text-[var(--ink-strong)]">
             No lead campaigns yet
           </h3>
@@ -106,7 +100,7 @@ export function ProspectListsOverview({
           </p>
           <Link
             href="/user/jobs"
-            className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:bg-[var(--brand-700)]"
+            className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
           >
             <Sparkles className="h-4 w-4" />
             Create a campaign
@@ -134,11 +128,11 @@ export function ProspectListsOverview({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-white/80 p-3 text-center backdrop-blur">
-      <div className="text-xl font-bold tabular-nums text-[var(--ink-strong)]">
+    <div className="min-w-[88px] rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-4 py-2.5 text-center">
+      <div className="text-xl font-semibold tabular-nums text-[var(--ink-strong)]">
         {value}
       </div>
-      <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-subtle)]">
+      <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
         {label}
       </div>
     </div>
@@ -160,57 +154,51 @@ function CampaignTile({
     >
       <Link
         href={`/user/leads?campaign=${campaign.id}`}
-        className="surface-card group relative block overflow-hidden p-5 transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+        className="surface-card group relative block p-5 transition hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-md)]"
       >
-        <div
-          className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-30 blur-2xl transition group-hover:opacity-50"
-          aria-hidden
-        />
-        <div className="relative">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h3 className="truncate text-base font-semibold capitalize text-[var(--ink-strong)]">
-                  {campaign.keyword}
-                </h3>
-                <StatusBadge status={campaign.status} />
-              </div>
-              <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
-                {campaign.location} ·{" "}
-                {new Date(campaign.started_at).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="truncate text-base font-semibold capitalize text-[var(--ink-strong)]">
+                {campaign.keyword}
+              </h3>
+              <StatusBadge status={campaign.status} />
             </div>
-            <ArrowRight className="h-4 w-4 -translate-x-1 text-[var(--ink-subtle)] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
+            <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
+              {campaign.location} ·{" "}
+              {new Date(campaign.started_at).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </p>
           </div>
+          <ArrowRight className="mt-0.5 h-4 w-4 -translate-x-1 text-[var(--ink-subtle)] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
+        </div>
 
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-bold tabular-nums text-[var(--ink-strong)]">
-              {campaign.result_count.toLocaleString()}
-            </span>
-            <span className="text-xs text-[var(--ink-muted)]">prospects</span>
-          </div>
+        <div className="mt-4 flex items-baseline gap-2">
+          <span className="text-3xl font-semibold tabular-nums text-[var(--ink-strong)]">
+            {campaign.result_count.toLocaleString()}
+          </span>
+          <span className="text-xs text-[var(--ink-muted)]">prospects</span>
+        </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <Pill
-              icon={<Mail className="h-3 w-3" />}
-              label={`${campaign.emails} emails`}
-              tone="brand"
-            />
-            <Pill
-              icon={<Phone className="h-3 w-3" />}
-              label={`${campaign.phones} phones`}
-              tone="success"
-            />
-            <Pill
-              icon={<Globe className="h-3 w-3" />}
-              label={`${campaign.websites} websites`}
-              tone="amber"
-            />
-          </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <Pill
+            icon={<Mail className="h-3 w-3" />}
+            label={`${campaign.emails} emails`}
+            tone="brand"
+          />
+          <Pill
+            icon={<Phone className="h-3 w-3" />}
+            label={`${campaign.phones} phones`}
+            tone="success"
+          />
+          <Pill
+            icon={<Globe className="h-3 w-3" />}
+            label={`${campaign.websites} websites`}
+            tone="amber"
+          />
         </div>
       </Link>
     </motion.div>

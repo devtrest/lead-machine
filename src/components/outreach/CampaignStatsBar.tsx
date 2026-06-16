@@ -132,27 +132,28 @@ export function CampaignStatsBar({ stats }: { stats: CampaignStats }) {
                 show: { opacity: 1, y: 0 },
               }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="surface-card relative overflow-hidden p-3.5"
+              className="surface-card p-4"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-subtle)]">
                   {card.label}
                 </div>
                 <span
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-                  style={{ backgroundColor: card.bg, color: card.accent }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset"
+                  style={{
+                    backgroundColor: card.bg,
+                    color: card.accent,
+                    boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.04)",
+                  }}
                 >
-                  <Icon className="h-3 w-3" />
+                  <Icon className="h-3.5 w-3.5" />
                 </span>
               </div>
-              <div
-                className="mt-2.5 text-xl font-bold tracking-tight tabular-nums"
-                style={{ color: card.accent }}
-              >
+              <div className="mt-3 text-xl font-semibold tracking-tight tabular-nums text-[var(--ink-strong)]">
                 {card.value}
               </div>
               {card.hint ? (
-                <div className="mt-0.5 truncate text-[10.5px] text-[var(--ink-muted)]">
+                <div className="mt-0.5 truncate text-[11px] text-[var(--ink-muted)]">
                   {card.hint}
                 </div>
               ) : null}
@@ -198,15 +199,15 @@ function ProgressCard({
   color: string;
 }) {
   return (
-    <div className="surface-card p-3.5">
+    <div className="surface-card p-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-muted)]">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-subtle)]">
           <Icon className="h-3.5 w-3.5" />
           {label}
         </div>
-        <span className="text-[11px] text-[var(--ink-muted)]">{right}</span>
+        <span className="text-[11px] tabular-nums text-[var(--ink-muted)]">{right}</span>
       </div>
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+      <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${value}%` }}

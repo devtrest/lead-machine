@@ -80,15 +80,23 @@ export function TestSendCard({
   }
 
   return (
-    <div className="surface-card space-y-3 p-5">
-      <div>
-        <h2 className="text-base font-semibold text-[var(--ink-strong)]">
-          Send a test email
-        </h2>
-        <p className="mt-1 text-xs text-[var(--ink-muted)]">
-          {helpText ??
-            "Drop in your own email (or a colleague's) to preview exactly what prospects will receive. Goes out through the picked sender."}
-        </p>
+    <div className="surface-card space-y-4 p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+          <Send className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-subtle)]">
+            Preview
+          </div>
+          <h2 className="mt-0.5 text-base font-semibold text-[var(--ink-strong)]">
+            Send a test email
+          </h2>
+          <p className="mt-1 text-xs text-[var(--ink-muted)]">
+            {helpText ??
+              "Drop in your own email (or a colleague's) to preview exactly what prospects will receive. Goes out through the picked sender."}
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_14rem]">
