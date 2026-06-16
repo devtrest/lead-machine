@@ -43,6 +43,13 @@ export default async function UserLayout({
     profile = refetch.data;
   }
 
+  // Hard role separation — admin accounts belong on /admin only and cannot
+  // navigate into the user dashboard. Keeps the blast radius of either
+  // surface bounded to its own role.
+  if (profile && (profile as { role?: string }).role === "admin") {
+    redirect("/admin");
+  }
+
   if (profile && (profile as { suspended?: boolean }).suspended === true) {
     return (
       <div className="app-shell flex min-h-screen items-center justify-center px-4">

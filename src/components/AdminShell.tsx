@@ -14,7 +14,6 @@ import {
   Menu,
   X,
   ChevronDown,
-  ArrowLeftRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initialsFor } from "@/lib/avatar";
@@ -100,15 +99,7 @@ export function AdminShell({ email, fullName, children }: Props) {
             </button>
 
             <div className="flex flex-1 items-center justify-end gap-2">
-              <Link
-                href="/user"
-                className="hidden items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-elev)] px-3.5 py-1.5 text-xs font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)] sm:inline-flex"
-              >
-                <ArrowLeftRight className="h-3.5 w-3.5" />
-                Switch to user app
-              </Link>
-
-              <div className="hidden items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)] sm:flex">
+              <div className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 sm:flex">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 Admin
               </div>
@@ -141,14 +132,6 @@ export function AdminShell({ email, fullName, children }: Props) {
                           {email ?? "anonymous"}
                         </div>
                       </div>
-                      <Link
-                        href="/user"
-                        onClick={() => setMenuOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
-                      >
-                        <ArrowLeftRight className="h-3.5 w-3.5" />
-                        User app
-                      </Link>
                       <button
                         type="button"
                         onClick={signOut}
@@ -251,14 +234,7 @@ function SidebarContent({
       </nav>
 
       <div className="border-t border-[var(--border)] p-4">
-        <Link
-          href="/user"
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-3 py-2 text-xs font-medium text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
-        >
-          <ArrowLeftRight className="h-3 w-3" />
-          Switch to user app
-        </Link>
-        <div className="mt-3 truncate px-1 text-[11px] text-[var(--ink-subtle)]">
+        <div className="truncate px-1 text-[11px] text-[var(--ink-subtle)]">
           {email ?? "anonymous"}
         </div>
         <button

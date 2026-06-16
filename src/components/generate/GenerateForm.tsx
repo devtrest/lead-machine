@@ -141,9 +141,12 @@ function progressFor(state: RunningState): number {
 
 export function GenerateForm() {
   const router = useRouter();
-  const [keyword, setKeyword] = useState("dentist");
-  const [location, setLocation] = useState("Islamabad, Pakistan");
-  const [targetInput, setTargetInput] = useState("50");
+  // Empty defaults so the form looks deliberate, not pre-filled. Users always
+  // see the placeholder text — no accidentally launching a "dentist in
+  // Islamabad" campaign because they clicked Submit too fast.
+  const [keyword, setKeyword] = useState("");
+  const [location, setLocation] = useState("");
+  const [targetInput, setTargetInput] = useState("");
   const [targetError, setTargetError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
   const abortRef = useRef<AbortController | null>(null);
@@ -158,7 +161,14 @@ export function GenerateForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (keyword.trim().length < 2 || location.trim().length < 2) return;
+    if (keyword.trim().length < 2) {
+      setStage({ kind: "error", message: "Enter a niche or keyword (at least 2 characters)." });
+      return;
+    }
+    if (location.trim().length < 2) {
+      setStage({ kind: "error", message: "Enter a location — city and country." });
+      return;
+    }
     if (target < 1) {
       setTargetError("Enter how many leads you want (1–5000).");
       return;

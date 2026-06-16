@@ -1,63 +1,77 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Mail,
   Lock,
-  User,
   AlertTriangle,
-  Check,
   ArrowRight,
   Eye,
   EyeOff,
+  ShieldCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-export function SignupForm() {
+export function AdminLoginForm() {
   const router = useRouter();
-  const [fullName, setFullName] = useState("");
+  const searchParams = useSearchParams();
+  const explicitNext = searchParams.get("next");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 8 || password.length > 16) {
-      setError("Password must be between 8 and 16 characters.");
-      return;
-    }
     setLoading(true);
     setError(null);
-    setMsg(null);
     const supabase = createClient();
-    const { data, error: signErr } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName },
-        emailRedirectTo: `${window.location.origin}/user`,
-      },
-    });
-    setLoading(false);
+    const { data: signResult, error: signErr } =
+      await supabase.auth.signInWithPassword({ email, password });
+
     if (signErr) {
+      setLoading(false);
       setError(signErr.message);
       return;
     }
-    if (data.session) {
-      router.replace("/user");
-      router.refresh();
+
+    const userId = signResult.user?.id;
+    let role = "user";
+    if (userId) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+      role = profile?.role ?? "user";
+    }
+
+    // Hard gate — only admin accounts can sign in here. Anything else gets
+    // signed out and rejected. The error message is intentionally vague so
+    // we don't leak whether the account exists at all.
+    if (role !== "admin") {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError(
+        "These credentials are not valid for admin access."
+      );
       return;
     }
-    setMsg(
-      "Check your inbox — confirm your email, then sign in to access your dashboard."
-    );
+
+    const target =
+      explicitNext && explicitNext.startsWith("/admin")
+        ? explicitNext
+        : "/admin";
+
+    setLoading(false);
+    router.replace(target);
+    router.refresh();
   }
 
   return (
@@ -65,35 +79,28 @@ export function SignupForm() {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32 }}
-      className="surface-card-elev p-7"
+      className="surface-card-elev relative overflow-hidden p-7"
     >
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-700 via-slate-900 to-slate-700" />
+
       <form className="space-y-4" onSubmit={onSubmit}>
         <Input
-          label="Full name"
-          autoComplete="name"
-          required
-          iconLeft={<User className="h-4 w-4" />}
-          placeholder="Jane Doe"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-        />
-        <Input
-          label="Work email"
+          label="Admin email"
           type="email"
           autoComplete="email"
           required
           iconLeft={<Mail className="h-4 w-4" />}
-          placeholder="you@company.com"
+          placeholder="admin@yourcompany.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
         <Input
           label="Password"
           type={showPassword ? "text" : "password"}
-          autoComplete="new-password"
+          autoComplete="current-password"
+          required
           minLength={8}
           maxLength={16}
-          required
           iconLeft={<Lock className="h-4 w-4" />}
           iconRight={
             <button
@@ -101,7 +108,7 @@ export function SignupForm() {
               onClick={() => setShowPassword((v) => !v)}
               aria-label={showPassword ? "Hide password" : "Show password"}
               aria-pressed={showPassword}
-              className="rounded p-0.5 text-[var(--ink-subtle)] transition hover:text-[var(--ink-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-500)]/30"
+              className="rounded p-0.5 text-[var(--ink-subtle)] transition hover:text-[var(--ink-strong)] focus:outline-none focus:ring-2 focus:ring-slate-700/30"
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" />
@@ -114,11 +121,6 @@ export function SignupForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        {password && (password.length < 8 || password.length > 16) ? (
-          <p className="text-xs font-medium text-[var(--danger-700)]">
-            Password must be between 8 and 16 characters.
-          </p>
-        ) : null}
 
         {error ? (
           <motion.div
@@ -131,30 +133,16 @@ export function SignupForm() {
           </motion.div>
         ) : null}
 
-        {msg ? (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-start gap-2 rounded-xl border border-[var(--success-100)] bg-[var(--success-50)] px-3.5 py-2.5 text-sm text-[var(--success-700)]"
-          >
-            <Check className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{msg}</span>
-          </motion.div>
-        ) : null}
-
         <Button
           type="submit"
           size="lg"
           loading={loading}
-          className="w-full"
+          className="w-full bg-slate-900 hover:bg-slate-800"
+          iconLeft={!loading ? <ShieldCheck className="h-4 w-4" /> : undefined}
           iconRight={!loading ? <ArrowRight className="h-4 w-4" /> : undefined}
         >
-          {loading ? "Creating account…" : "Create account"}
+          {loading ? "Verifying…" : "Sign in to admin"}
         </Button>
-
-        <p className="text-center text-xs text-[var(--ink-subtle)]">
-          By creating an account, you agree to our terms and privacy policy.
-        </p>
       </form>
     </motion.div>
   );

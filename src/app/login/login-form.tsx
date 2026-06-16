@@ -8,8 +8,6 @@ import {
   Lock,
   AlertTriangle,
   ArrowRight,
-  User as UserIcon,
-  ShieldCheck,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -17,18 +15,11 @@ import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
-type Mode = "user" | "admin";
-
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const explicitNext = searchParams.get("next");
 
-  const initialMode: Mode = explicitNext?.startsWith("/admin")
-    ? "admin"
-    : "user";
-
-  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -60,23 +51,20 @@ export function LoginForm() {
       role = profile?.role ?? "user";
     }
 
-    // Selected Admin tab but the account isn't an admin → reject and sign out.
-    if (mode === "admin" && role !== "admin") {
+    // User sign-in form only accepts user accounts. Admins must use the
+    // separate /leadmachineadmin URL — keeps the admin login surface
+    // unindexed and the credentials reset paths separate.
+    if (role === "admin") {
       await supabase.auth.signOut();
       setLoading(false);
       setError(
-        "This account doesn't have admin access. Switch to the User tab to sign in."
+        "This is an admin account. Please sign in at the admin URL instead."
       );
       return;
     }
 
-    // Honor an explicit next param (e.g. coming from a guarded page).
-    let target: string;
-    if (explicitNext && explicitNext.startsWith("/")) {
-      target = explicitNext;
-    } else {
-      target = mode === "admin" ? "/admin" : "/user";
-    }
+    const target =
+      explicitNext && explicitNext.startsWith("/") ? explicitNext : "/user";
 
     setLoading(false);
     router.replace(target);
@@ -90,18 +78,14 @@ export function LoginForm() {
       transition={{ duration: 0.32 }}
       className="surface-card-elev p-7"
     >
-      <ModeToggle mode={mode} onChange={setMode} />
-
-      <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+      <form className="space-y-4" onSubmit={onSubmit}>
         <Input
           label="Email"
           type="email"
           autoComplete="email"
           required
           iconLeft={<Mail className="h-4 w-4" />}
-          placeholder={
-            mode === "admin" ? "admin@yourcompany.com" : "you@company.com"
-          }
+          placeholder="you@company.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -110,6 +94,8 @@ export function LoginForm() {
           type={showPassword ? "text" : "password"}
           autoComplete="current-password"
           required
+          minLength={8}
+          maxLength={16}
           iconLeft={<Lock className="h-4 w-4" />}
           iconRight={
             <button
@@ -126,7 +112,7 @@ export function LoginForm() {
               )}
             </button>
           }
-          placeholder="••••••••"
+          placeholder="8–16 characters"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -149,61 +135,9 @@ export function LoginForm() {
           className="w-full"
           iconRight={!loading ? <ArrowRight className="h-4 w-4" /> : undefined}
         >
-          {loading
-            ? "Signing in…"
-            : mode === "admin"
-              ? "Sign in to admin"
-              : "Sign in"}
+          {loading ? "Signing in…" : "Sign in"}
         </Button>
       </form>
     </motion.div>
-  );
-}
-
-function ModeToggle({
-  mode,
-  onChange,
-}: {
-  mode: Mode;
-  onChange: (m: Mode) => void;
-}) {
-  const options: { id: Mode; label: string; icon: React.ReactNode }[] = [
-    { id: "user", label: "User", icon: <UserIcon className="h-3.5 w-3.5" /> },
-    {
-      id: "admin",
-      label: "Admin",
-      icon: <ShieldCheck className="h-3.5 w-3.5" />,
-    },
-  ];
-  return (
-    <div className="flex gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)]/60 p-1">
-      {options.map((opt) => {
-        const active = mode === opt.id;
-        return (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => onChange(opt.id)}
-            className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-              active
-                ? "text-[var(--brand-700)]"
-                : "text-[var(--ink-muted)] hover:text-[var(--ink-strong)]"
-            }`}
-          >
-            {active ? (
-              <motion.span
-                layoutId="login-mode-active"
-                className="absolute inset-0 rounded-lg bg-[var(--surface-elev)] shadow-[var(--shadow-xs)] ring-1 ring-[var(--brand-100)]"
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              />
-            ) : null}
-            <span className="relative z-10 inline-flex items-center gap-1.5">
-              {opt.icon}
-              {opt.label}
-            </span>
-          </button>
-        );
-      })}
-    </div>
   );
 }

@@ -13,7 +13,7 @@ export default async function AdminLayout({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/login?next=/admin");
+    redirect("/leadmachineadmin?next=/admin");
   }
 
   const { data: profile } = await supabase
@@ -22,8 +22,12 @@ export default async function AdminLayout({
     .eq("id", user.id)
     .maybeSingle();
 
+  // Strict admin-only — a non-admin who got past the login gate (e.g. role
+  // demotion mid-session) is signed back out and bounced to the admin URL,
+  // not the user dashboard. Admin and user surfaces are isolated; we don't
+  // silently switch them between roles.
   if (profile?.role !== "admin") {
-    redirect("/user");
+    redirect("/leadmachineadmin");
   }
 
   return (

@@ -12,14 +12,12 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkle,
   ChevronDown,
   CreditCard,
   Mail,
   AtSign,
   Inbox,
   Activity,
-  Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initialsFor } from "@/lib/avatar";
@@ -101,17 +99,6 @@ const navSections: NavSection[] = [
         href: "/user/settings",
         label: "Settings",
         icon: <Settings className="h-4 w-4" />,
-      },
-    ],
-  },
-  {
-    label: "Admin",
-    items: [
-      {
-        href: "/admin",
-        label: "Admin console",
-        icon: <Sparkle className="h-4 w-4" />,
-        adminOnly: true,
       },
     ],
   },
@@ -215,10 +202,20 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                 New campaign
               </Link>
 
-              <div className="hidden items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)] sm:flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand-500)]" />
+              <Link
+                href="/user/billing"
+                className="hidden items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-3 py-1.5 text-xs font-semibold text-[var(--brand-700)] transition hover:border-[var(--brand-200)] hover:bg-[var(--brand-100)]/60 sm:flex"
+                title="Buy more credits"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/credits-icon.svg"
+                  alt=""
+                  aria-hidden
+                  className="h-4 w-4"
+                />
                 {credits.toLocaleString()} credits
-              </div>
+              </Link>
 
               <div className="relative">
                 <button
@@ -260,16 +257,6 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                         <Settings className="h-3.5 w-3.5" />
                         Settings
                       </Link>
-                      {role === "admin" ? (
-                        <Link
-                          href="/admin"
-                          onClick={() => setMenuOpen(false)}
-                          className="flex items-center gap-2 border-t border-[var(--border)] px-4 py-2.5 text-sm font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-50)]"
-                        >
-                          <Shield className="h-3.5 w-3.5" />
-                          Switch to admin panel
-                        </Link>
-                      ) : null}
                       <button
                         type="button"
                         onClick={signOut}
@@ -321,15 +308,13 @@ function SidebarContent({
     <>
       <div className="flex items-center justify-between gap-2 px-5 py-5">
         <Link href="/user" className="flex items-center gap-2.5">
-          <span className="relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[var(--brand-600)] to-[var(--sky-500)] shadow-[0_4px_14px_rgba(79,70,229,0.30)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo-mark.svg"
-              alt=""
-              aria-hidden
-              className="h-5 w-5 brightness-0 invert"
-            />
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-mark.svg"
+            alt=""
+            aria-hidden
+            className="h-8 w-8"
+          />
           <span className="text-sm font-semibold tracking-tight text-[var(--ink-strong)]">
             Lead Machine
           </span>
@@ -393,12 +378,21 @@ function SidebarContent({
 
       <div className="border-t border-[var(--border)] p-4">
         <div className="surface-sunken flex items-center justify-between p-3">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
-              {plan}
-            </div>
-            <div className="mt-0.5 text-sm font-semibold text-[var(--ink-strong)]">
-              {credits.toLocaleString()} credits
+          <div className="flex min-w-0 items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/credits-icon.svg"
+              alt=""
+              aria-hidden
+              className="h-9 w-9 shrink-0"
+            />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+                {plan}
+              </div>
+              <div className="mt-0.5 text-sm font-semibold text-[var(--ink-strong)]">
+                {credits.toLocaleString()} credits
+              </div>
             </div>
           </div>
           <Link
