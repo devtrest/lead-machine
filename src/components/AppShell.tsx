@@ -143,7 +143,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
     <div className="app-shell min-h-screen text-[var(--ink-strong)]">
       <div className="mx-auto flex max-w-[1500px]">
         {/* Sidebar */}
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface-elev)]/80 backdrop-blur-sm lg:flex">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface-sunken)] lg:flex">
           <SidebarContent
             sections={visibleSections}
             pathname={pathname}
@@ -170,7 +170,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
                 transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[var(--border)] bg-[var(--surface-elev)] lg:hidden"
+                className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[var(--border)] bg-[var(--surface-sunken)] lg:hidden"
               >
                 <SidebarContent
                   sections={visibleSections}
@@ -359,7 +359,7 @@ function SidebarContent({
                   className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
                     active
                       ? "nav-active"
-                      : "text-[var(--ink-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--ink-strong)]"
+                      : "text-[var(--ink-muted)] hover:bg-[var(--surface-elev)] hover:text-[var(--ink-strong)]"
                   }`}
                 >
                   {active ? (
@@ -387,7 +387,7 @@ function SidebarContent({
       </nav>
 
       <div className="border-t border-[var(--border)] p-4">
-        <div className="surface-sunken flex items-center justify-between p-3">
+        <div className="flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--surface-elev)] p-3 shadow-[var(--shadow-xs)]">
           <div className="flex min-w-0 items-center gap-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

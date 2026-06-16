@@ -1,13 +1,10 @@
 import Link from "next/link";
 import {
   Sparkles,
-  Users,
   Layers,
   ArrowRight,
   TrendingUp,
   Activity,
-  Zap,
-  Database,
   Send,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -136,63 +133,35 @@ export default async function DashboardPage() {
         <TrialFailedBanner error={trial.lastError} />
       ) : null}
 
-      <section className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elev)] px-6 py-8 shadow-[var(--shadow-xs)] md:px-10 md:py-10">
-        <div
-          className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] opacity-50 blur-3xl"
-          aria-hidden
-        />
-        <div className="relative grid gap-8 md:grid-cols-[1.4fr_1fr] md:items-center">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-white/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)] backdrop-blur">
-              <Sparkles className="h-3 w-3" />
-              AI lead engine
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-[40px] md:leading-tight">
-              {firstName ? `Welcome back, ${firstName}.` : "Welcome back."}
-            </h1>
-            <p className="mt-3 max-w-xl text-sm text-[var(--ink-muted)] md:text-base">
-              Tell us your niche, we&apos;ll surface ready-to-contact leads. No
-              spreadsheets, no scraping setup, no scrubbing duplicates.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <Link
-                href="/user/jobs"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--brand-600)] px-5 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(79,70,229,0.30)] transition hover:bg-[var(--brand-700)] hover:shadow-[0_12px_28px_rgba(79,70,229,0.35)]"
-              >
-                <Sparkles className="h-4 w-4" />
-                Generate leads
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                href="/user/leads"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-white/80 px-5 py-3 text-sm font-medium text-[var(--ink-strong)] backdrop-blur transition hover:bg-white"
-              >
-                <Users className="h-4 w-4" />
-                View leads
-              </Link>
-            </div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
+            Overview
           </div>
-
-          {/* Quick action cards */}
-          <div className="grid grid-cols-3 gap-3">
-            <QuickAction
-              icon={<Zap className="h-4 w-4" />}
-              label="New scrape"
-              href="/user/jobs"
-            />
-            <QuickAction
-              icon={<Send className="h-4 w-4" />}
-              label="Outreach"
-              href="/user/outreach"
-            />
-            <QuickAction
-              icon={<Database className="h-4 w-4" />}
-              label="Leads"
-              href="/user/leads"
-            />
-          </div>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-3xl">
+            {firstName ? `Welcome back, ${firstName}` : "Welcome back"}
+          </h1>
+          <p className="mt-1 text-sm text-[var(--ink-muted)]">
+            Here&apos;s what&apos;s moving across your lead engine and outreach.
+          </p>
         </div>
-      </section>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/user/jobs"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:bg-[var(--brand-700)]"
+          >
+            <Sparkles className="h-4 w-4" />
+            Generate leads
+          </Link>
+          <Link
+            href="/user/outreach"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-4 py-2.5 text-sm font-medium text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
+          >
+            <Send className="h-4 w-4" />
+            New campaign
+          </Link>
+        </div>
+      </header>
 
       <DashboardKpis
         totalLeads={totalLeads}
@@ -336,7 +305,7 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-[var(--brand-100)] bg-gradient-to-br from-[var(--brand-50)] to-[var(--sky-100)] p-6">
+        <div className="surface-card p-6">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--brand-700)]">
             Pro tip
           </div>
@@ -390,30 +359,6 @@ function OnboardingBanner() {
         </Link>
       </div>
     </section>
-  );
-}
-
-function QuickAction({
-  icon,
-  label,
-  href,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  href: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group flex flex-col items-start gap-2 rounded-2xl border border-[var(--border)] bg-white/80 p-3.5 backdrop-blur transition hover:-translate-y-0.5 hover:border-[var(--brand-200)] hover:bg-white hover:shadow-[var(--shadow-sm)]"
-    >
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--brand-50)] text-[var(--brand-700)] transition group-hover:bg-[var(--brand-100)]">
-        {icon}
-      </span>
-      <span className="text-xs font-semibold text-[var(--ink-strong)]">
-        {label}
-      </span>
-    </Link>
   );
 }
 

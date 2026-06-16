@@ -58,21 +58,18 @@ export function DashboardKpis({
   ];
 
   const toneMap = {
-    brand:
-      "bg-[var(--brand-50)] text-[var(--brand-700)] ring-1 ring-[var(--brand-100)]",
-    amber:
-      "bg-[var(--accent-50)] text-[var(--accent-700)] ring-1 ring-[var(--accent-100)]",
-    success:
-      "bg-[var(--success-50)] text-[var(--success-700)] ring-1 ring-[var(--success-100)]",
-    credits:
-      "bg-gradient-to-br from-[var(--brand-50)] to-[var(--sky-50)] text-[var(--brand-700)] ring-1 ring-[var(--brand-100)]",
+    brand: "bg-[var(--brand-50)] text-[var(--brand-700)]",
+    amber: "bg-[var(--accent-50)] text-[var(--accent-700)]",
+    success: "bg-[var(--success-50)] text-[var(--success-700)]",
+    credits: "bg-[var(--brand-50)] text-[var(--brand-700)]",
   };
 
+  // Thin colored rule at the top of each card — the one deliberate accent.
   const accentMap = {
-    brand: "from-[var(--brand-200)] to-[var(--brand-100)]",
-    amber: "from-[var(--accent-200)] to-[var(--accent-100)]",
-    success: "from-[var(--success-200)] to-[var(--success-100)]",
-    credits: "from-[var(--brand-200)] to-[var(--sky-200)]",
+    brand: "bg-[var(--brand-500)]",
+    amber: "bg-[var(--accent-500)]",
+    success: "bg-[var(--success-500)]",
+    credits: "bg-gradient-to-r from-[var(--brand-500)] to-[var(--sky-500)]",
   };
 
   return (
@@ -90,43 +87,36 @@ export function DashboardKpis({
         >
           <Link
             href={tile.href}
-            className="group surface-card relative block overflow-hidden p-5 transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+            className="group surface-card relative block overflow-hidden p-5 transition hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-sm)]"
           >
-            <div
-              className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br ${accentMap[tile.tone]} opacity-40 blur-2xl transition group-hover:opacity-60`}
+            <span
+              className={`absolute inset-x-0 top-0 h-[3px] ${accentMap[tile.tone]}`}
               aria-hidden
             />
-            <div className="relative">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--ink-subtle)]">
-                  {tile.label}
-                </span>
-                <span
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${toneMap[tile.tone]}`}
-                >
-                  {tile.iconImg ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={tile.iconImg}
-                      alt=""
-                      aria-hidden
-                      className="h-5 w-5"
-                    />
-                  ) : (
-                    tile.icon
-                  )}
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2 text-3xl font-semibold tracking-tight text-[var(--ink-strong)]">
-                <Counter value={tile.value} />
-                <ArrowRight className="h-4 w-4 -translate-x-1 text-[var(--ink-subtle)] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
-              </div>
-              <div className="mt-1 flex items-center gap-1 text-xs text-[var(--ink-subtle)]">
-                {tile.tone === "brand" ? (
-                  <TrendingUp className="h-3 w-3 text-[var(--success-500)]" />
-                ) : null}
-                {tile.hint}
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-subtle)]">
+                {tile.label}
+              </span>
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneMap[tile.tone]}`}
+              >
+                {tile.iconImg ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={tile.iconImg} alt="" aria-hidden className="h-4 w-4" />
+                ) : (
+                  tile.icon
+                )}
+              </span>
+            </div>
+            <div className="mt-4 flex items-baseline gap-2 text-[28px] font-semibold leading-none tracking-tight tabular-nums text-[var(--ink-strong)]">
+              <Counter value={tile.value} />
+              <ArrowRight className="h-4 w-4 -translate-x-1 text-[var(--ink-subtle)] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
+            </div>
+            <div className="mt-2 flex items-center gap-1 text-xs text-[var(--ink-muted)]">
+              {tile.tone === "brand" ? (
+                <TrendingUp className="h-3 w-3 text-[var(--success-500)]" />
+              ) : null}
+              {tile.hint}
             </div>
           </Link>
         </motion.div>
