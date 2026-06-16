@@ -1,15 +1,18 @@
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
-    <linearGradient id="creditGrad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+    <linearGradient id="creditCoin" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#3B82F6"/>
       <stop offset="1" stop-color="#4F46E5"/>
     </linearGradient>
-    <linearGradient id="creditGradInner" x1="6" y1="6" x2="18" y2="18" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff" stop-opacity="0.95"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0.65"/>
-    </linearGradient>
   </defs>
-  <circle cx="12" cy="12" r="10" fill="url(#creditGrad)"/>
-  <circle cx="12" cy="12" r="7.5" fill="none" stroke="url(#creditGradInner)" stroke-width="1.2" stroke-opacity="0.9"/>
-  <path d="M12 7.5 L13.4 10.6 L16.5 11.05 L14.3 13.2 L14.9 16.3 L12 14.8 L9.1 16.3 L9.7 13.2 L7.5 11.05 L10.6 10.6 Z" fill="#fff"/>
+  <!-- Back coin (upper-left) -->
+  <g transform="translate(22 22) rotate(-20)" stroke="url(#creditCoin)" stroke-width="3.6" stroke-linecap="round" fill="none">
+    <circle cx="0" cy="0" r="14" stroke-dasharray="74 14" />
+    <circle cx="0" cy="0" r="8.5" stroke-dasharray="44 9" />
+  </g>
+  <!-- Front coin (lower-right) -->
+  <g transform="translate(42 42) rotate(25)" stroke="url(#creditCoin)" stroke-width="3.6" stroke-linecap="round" fill="none">
+    <circle cx="0" cy="0" r="16" stroke-dasharray="84 16" />
+    <circle cx="0" cy="0" r="9.5" stroke-dasharray="50 10" />
+  </g>
 </svg>
