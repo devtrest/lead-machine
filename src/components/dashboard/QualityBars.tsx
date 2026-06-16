@@ -78,7 +78,7 @@ export function QualityBars({
                 <span className="ml-1 text-[var(--ink-subtle)]">· {pct}%</span>
               </span>
             </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)] ring-1 ring-inset ring-[var(--border)]">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${pct}%` }}

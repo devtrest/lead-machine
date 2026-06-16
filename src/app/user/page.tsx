@@ -5,6 +5,7 @@ import {
   ArrowRight,
   TrendingUp,
   Activity,
+  BarChart3,
   Send,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -208,6 +209,7 @@ export default async function DashboardPage() {
 
         <div className="surface-card p-6">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+            <BarChart3 className="h-3.5 w-3.5" />
             Lead quality
           </div>
           <h2 className="mt-1 text-base font-semibold text-[var(--ink-strong)]">
