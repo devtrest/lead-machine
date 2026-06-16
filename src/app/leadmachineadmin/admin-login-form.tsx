@@ -79,10 +79,8 @@ export function AdminLoginForm() {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32 }}
-      className="surface-card-elev relative overflow-hidden p-7"
+      className="surface-card-elev p-7"
     >
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-slate-700 via-slate-900 to-slate-700" />
-
       <form className="space-y-4" onSubmit={onSubmit}>
         <Input
           label="Admin email"
