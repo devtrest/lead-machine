@@ -136,14 +136,9 @@ export default async function DashboardPage() {
         <TrialFailedBanner error={trial.lastError} />
       ) : null}
 
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-gradient-to-br from-[var(--surface-elev)] via-[var(--surface-elev)] to-[var(--brand-50)]/40 px-6 py-9 md:px-12 md:py-12">
-        <div className="dot-grid absolute inset-0 opacity-50" aria-hidden />
+      <section className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elev)] px-6 py-8 shadow-[var(--shadow-xs)] md:px-10 md:py-10">
         <div
-          className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gradient-to-br from-[var(--brand-200)] to-[var(--sky-200)] opacity-60 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="absolute -bottom-32 -left-24 h-72 w-72 rounded-full bg-gradient-to-br from-[var(--sky-200)] to-[var(--brand-100)] opacity-50 blur-3xl"
+          className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] opacity-50 blur-3xl"
           aria-hidden
         />
         <div className="relative grid gap-8 md:grid-cols-[1.4fr_1fr] md:items-center">

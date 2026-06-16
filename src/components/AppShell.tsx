@@ -128,6 +128,17 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
     .filter((sec) => sec.items.length > 0);
   const initials = initialsFor(fullName ?? email);
 
+  // Derive the current page title from the nav config so the topbar reads
+  // like an app, not a bare bar.
+  const currentItem = navSections
+    .flatMap((s) => s.items)
+    .find(
+      (n) =>
+        pathname === n.href ||
+        (n.href !== "/user" && pathname.startsWith(n.href))
+    );
+  const pageTitle = currentItem?.label ?? "Dashboard";
+
   return (
     <div className="app-shell min-h-screen text-[var(--ink-strong)]">
       <div className="mx-auto flex max-w-[1500px]">
@@ -177,17 +188,22 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
 
         {/* Main */}
         <main className="min-w-0 flex-1">
-          <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)]/85 px-4 py-3 backdrop-blur md:px-8">
-            <button
-              type="button"
-              onClick={() => setMobileOpen(true)}
-              className="rounded-lg border border-[var(--border)] p-2 text-[var(--ink-muted)] transition hover:bg-[var(--surface-sunken)] lg:hidden"
-              aria-label="Open menu"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
+          <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)]/80 px-4 py-3 backdrop-blur md:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMobileOpen(true)}
+                className="rounded-lg border border-[var(--border)] p-2 text-[var(--ink-muted)] transition hover:bg-[var(--surface-sunken)] lg:hidden"
+                aria-label="Open menu"
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+              <h1 className="truncate text-[15px] font-semibold tracking-tight text-[var(--ink-strong)]">
+                {pageTitle}
+              </h1>
+            </div>
 
-            <div className="flex flex-1 items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2">
               <Link
                 href="/user/jobs"
                 className="hidden items-center gap-1.5 rounded-full bg-gradient-to-r from-[var(--brand-600)] to-[var(--brand-500)] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:opacity-95 sm:inline-flex"
