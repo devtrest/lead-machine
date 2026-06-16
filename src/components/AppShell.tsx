@@ -17,7 +17,6 @@ import {
   Mail,
   AtSign,
   Inbox,
-  Activity,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initialsFor } from "@/lib/avatar";
@@ -51,18 +50,13 @@ const navSections: NavSection[] = [
     label: "Lead engine",
     items: [
       {
-        href: "/user/generate",
-        label: "Generate leads",
+        href: "/user/jobs",
+        label: "Lead campaigns",
         icon: <Sparkles className="h-4 w-4" />,
       },
       {
-        href: "/user/jobs",
-        label: "Scraping campaigns",
-        icon: <Activity className="h-4 w-4" />,
-      },
-      {
         href: "/user/leads",
-        label: "Lead database",
+        label: "Prospect lists",
         icon: <Users className="h-4 w-4" />,
       },
     ],
@@ -195,7 +189,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
 
             <div className="flex flex-1 items-center justify-end gap-2">
               <Link
-                href="/user/generate"
+                href="/user/jobs"
                 className="hidden items-center gap-1.5 rounded-full bg-gradient-to-r from-[var(--brand-600)] to-[var(--brand-500)] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:opacity-95 sm:inline-flex"
               >
                 <Sparkles className="h-3.5 w-3.5" />
