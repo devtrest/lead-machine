@@ -44,18 +44,18 @@ export function HomeHero({
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="mx-auto max-w-3xl text-center"
+          className="mx-auto max-w-5xl text-center"
         >
           <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)]">
             <Sparkles className="h-3 w-3" />
             AI-powered lead generation
           </div>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-6xl md:leading-[1.05]">
+          <h1 className="mt-5 text-balance text-4xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-6xl md:leading-[1.08]">
             Find leads and close clients{" "}
             <br className="hidden md:block" />
             <span className="brand-text-gradient">while you sleep</span>.
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-base text-[var(--ink-muted)] md:text-lg">
+          <p className="mx-auto mt-5 max-w-2xl text-base text-[var(--ink-muted)] md:text-lg">
             Tell Lead Machine a niche and a city. We surface verified businesses
             with phones and emails, then run your cold-email outreach on
             autopilot — so interested replies land in one inbox while
