@@ -93,9 +93,6 @@ export function HomeHero({
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--danger-500)]/40" />
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--warning-500)]/40" />
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--success-500)]/40" />
-              <span className="ml-3 text-xs text-[var(--ink-subtle)]">
-                leadmachine.app/dashboard
-              </span>
             </div>
             <div className="grid gap-4 p-5 md:grid-cols-[0.95fr_1.05fr] md:p-7">
               <div className="surface-sunken p-5">

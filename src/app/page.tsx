@@ -2,6 +2,7 @@ import type { User } from "@supabase/supabase-js";
 import { PricingSection } from "@/components/PricingSection";
 import { SiteHeader } from "@/components/SiteHeader";
 import { HomeHero } from "@/components/home/HomeHero";
+import { LogoMarquee } from "@/components/home/LogoMarquee";
 import { HomeFeatures } from "@/components/home/HomeFeatures";
 import { HomeHowItWorks } from "@/components/home/HomeHowItWorks";
 import { HomePreview } from "@/components/home/HomePreview";
@@ -37,6 +38,7 @@ export default async function HomePage() {
       <SiteHeader signedIn={signedIn} isAdmin={isAdmin} />
 
       <main className="relative">
+        <LogoMarquee />
         <HomeHero signedIn={signedIn} isAdmin={isAdmin} />
         <HomeFeatures />
         <HomeHowItWorks />
