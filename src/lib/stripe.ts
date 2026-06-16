@@ -85,6 +85,16 @@ export const TRIAL_PRICE_USD = "$1";
 export const TRIAL_CREDIT_GRANT = 100;
 export const TRIAL_DURATION_DAYS = 3;
 
+/** One-time top-up credit packs. These credits never expire and are used
+ *  first (before monthly plan credits). */
+export const TOPUP_PACKS = [
+  { id: "pack_1000", credits: 1_000, priceCents: 2_500, priceUsd: "$25" },
+  { id: "pack_2000", credits: 2_000, priceCents: 4_900, priceUsd: "$49" },
+  { id: "pack_5000", credits: 5_000, priceCents: 9_900, priceUsd: "$99" },
+] as const;
+
+export type TopupPackId = (typeof TOPUP_PACKS)[number]["id"];
+
 export function isStripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
 }

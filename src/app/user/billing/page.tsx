@@ -1,105 +1,83 @@
-import { CreditCard, Sparkles, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { BillingPanel } from "@/components/billing/BillingPanel";
+import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import { BillingDashboard, type Txn } from "@/components/billing/BillingDashboard";
 
 export const dynamic = "force-dynamic";
 
-const includedPerks = [
-  "AI niche expansion across related keywords",
-  "Email + phone enrichment from public sources",
-  "CSV + Excel export, CRM-ready columns",
-  "Unlimited outreach follow-ups (free after step 1)",
-  "Per-campaign daily caps + send windows",
-  "Multi-Gmail sender rotation + unified inbox",
-];
+export const metadata = { title: "Billing — Lead Machine" };
 
 export default async function BillingPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const userId = user!.id;
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name,credits,plan,trial_status,trial_ends_at")
-    .eq("id", user!.id)
+    .select(
+      "credits,plan,monthly_credit_grant,subscription_status,current_period_end,cancel_at_period_end,trial_status,trial_ends_at,stripe_customer_id"
+    )
+    .eq("id", userId)
     .maybeSingle();
 
-  const plan = (profile?.plan as string | null) ?? "starter";
+  const p = (profile ?? {}) as Record<string, unknown>;
+
+  const { data: topupGrants } = await supabase
+    .from("credit_grants")
+    .select("amount")
+    .eq("user_id", userId)
+    .eq("kind", "topup");
+  const lifetimeTopup = (topupGrants ?? []).reduce(
+    (a, g) => a + ((g as { amount?: number }).amount ?? 0),
+    0
+  );
+
+  // Stripe-backed data (charges = unified $ ledger; card on file). Best-effort.
+  let transactions: Txn[] = [];
+  let lifetimeSpentCents = 0;
+  let card: { brand: string; last4: string } | null = null;
+  const customerId = p.stripe_customer_id as string | undefined;
+  if (isStripeConfigured() && customerId) {
+    try {
+      const stripe = getStripe();
+      const charges = await stripe.charges.list({ customer: customerId, limit: 24 });
+      transactions = charges.data.map((c) => ({
+        desc: c.description ?? "Charge",
+        date: new Date(c.created * 1000).toISOString(),
+        amountCents: c.amount,
+        status: c.status,
+      }));
+      lifetimeSpentCents = charges.data
+        .filter((c) => c.paid && c.status === "succeeded")
+        .reduce((a, c) => a + c.amount, 0);
+      const pms = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: "card",
+        limit: 1,
+      });
+      const cd = pms.data[0]?.card;
+      if (cd) card = { brand: cd.brand, last4: cd.last4 };
+    } catch {
+      /* show empty rather than error the page */
+    }
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Page header */}
-      <div className="flex flex-col gap-4 border-b border-[var(--border)] pb-6 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
-            Billing &amp; credits
-          </div>
-          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-3xl">
-            Billing
-          </h1>
-          <p className="mt-2 max-w-xl text-sm text-[var(--ink-muted)]">
-            1 credit = 1 lead. Credits never expire and roll forward across
-            every campaign you run.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-elev)] px-3 py-1.5 text-xs font-semibold text-[var(--ink-muted)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/credits-icon.svg" alt="" aria-hidden className="h-4 w-4" />
-            Current plan:{" "}
-            <span className="capitalize text-[var(--brand-700)]">{plan}</span>
-          </span>
-          {profile?.trial_status === "active" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent-100)] bg-[var(--accent-50)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-700)]">
-              <Sparkles className="h-3 w-3" />
-              Trial active
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Credit balance + what every plan includes */}
-      <div className="grid gap-6 md:grid-cols-[1fr_1.4fr]">
-        <section className="surface-card flex flex-col justify-between p-6">
-          <div>
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
-              <CreditCard className="h-3.5 w-3.5" />
-              Credit balance
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-4xl font-semibold tracking-tight tabular-nums text-[var(--ink-strong)]">
-                {(profile?.credits ?? 0).toLocaleString()}
-              </span>
-              <span className="text-sm text-[var(--ink-muted)]">credits</span>
-            </div>
-          </div>
-          <p className="mt-4 text-xs text-[var(--ink-subtle)]">
-            Roll forward across every campaign. Never expire.
-          </p>
-        </section>
-
-        <section className="surface-card p-6">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
-            Every plan includes
-          </div>
-          <ul className="mt-4 grid gap-x-6 gap-y-2.5 text-sm sm:grid-cols-2">
-            {includedPerks.map((p) => (
-              <li
-                key={p}
-                className="flex items-start gap-2 text-[var(--ink-strong)]"
-              >
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--success-100)] text-[var(--success-700)]">
-                  <Check className="h-2.5 w-2.5" />
-                </span>
-                {p}
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
-
-      <BillingPanel />
-    </div>
+    <BillingDashboard
+      credits={(p.credits as number) ?? 0}
+      plan={(p.plan as string) ?? "starter"}
+      monthlyGrant={(p.monthly_credit_grant as number) ?? 0}
+      lifetimeTopup={lifetimeTopup}
+      subscriptionStatus={(p.subscription_status as string) ?? null}
+      currentPeriodEnd={(p.current_period_end as string) ?? null}
+      cancelAtPeriodEnd={(p.cancel_at_period_end as boolean) ?? false}
+      trialStatus={(p.trial_status as string) ?? null}
+      trialEndsAt={(p.trial_ends_at as string) ?? null}
+      hasCustomer={Boolean(customerId)}
+      card={card}
+      lifetimeSpentCents={lifetimeSpentCents}
+      transactions={transactions}
+    />
   );
 }

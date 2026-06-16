@@ -68,6 +68,9 @@ async function charge(): Promise<TrialChargeResult> {
     .eq("trial_status", "active")
     .lte("trial_ends_at", nowIso)
     .not("stripe_customer_id", "is", null)
+    // Native subscriptions are auto-charged by Stripe at trial end — only
+    // legacy trials WITHOUT a subscription need the off-session charge here.
+    .is("stripe_subscription_id", null)
     .limit(50);
 
   if (error) {
