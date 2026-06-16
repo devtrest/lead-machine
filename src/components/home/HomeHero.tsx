@@ -11,6 +11,7 @@ import {
   Phone,
   Star,
 } from "lucide-react";
+import { LogoMarquee } from "@/components/home/LogoMarquee";
 
 export function HomeHero({
   signedIn,
@@ -81,6 +82,8 @@ export function HomeHero({
             Start for $1 · 100 credits, 7-day trial
           </div>
         </motion.div>
+
+        <LogoMarquee />
 
         <motion.div
           initial={{ opacity: 0, y: 24 }}
