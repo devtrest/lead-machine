@@ -15,45 +15,75 @@ Originally named "Nichely"; rebranded in May 2026. All user-facing strings now
 say **Lead Machine**. The logo is at `public/logo-mark.svg` (funnel + 3 dots,
 indigo → sky-blue gradient).
 
-## Current status (as of latest commit `63c0ad9`)
+## Current status (as of latest commit `cfcd491`)
 
 **What works:**
-- Marketing site, auth, billing, dashboard, leads CRM, admin console — all live
-- Local dev (`npm run dev`) runs the full pipeline end-to-end with embedded
-  Puppeteer
-- Frontend deploys cleanly to **Vercel** (`lead-machine-m9i9.vercel.app`)
-- Worker deploys cleanly to **Railway** (`lead-machine-production-256b.up.railway.app`)
-- All migrations are runnable in Supabase SQL editor
+- Marketing site, auth, billing (trial + credit packs), dashboard, leads CRM,
+  admin console — all live
+- Full **cold-email outreach suite**: multi-step sequence wizard, multi-provider
+  senders (Gmail/Outlook/Titan/Zoho/Yahoo/custom SMTP+IMAP), round-robin sending,
+  open tracking, and a **Unibox** that polls IMAP for replies
+- Local dev (`npm run dev`) runs the full lead-gen pipeline end-to-end in-process
+- Frontend deploys to **Vercel** (`lead-machine-m9i9.vercel.app`)
+- Worker deploys to **Railway** (`lead-machine-production-256b.up.railway.app`)
+- All migrations are runnable in Supabase SQL editor (run order below)
 
-**Place lookup is now Google Places API (New).** Puppeteer is fully removed
-from both the worker and the root frontend (`src/lib`). The migration was
-forced by Google blocking cloud-server IPs from Maps — Puppeteer-on-Railway
-was getting consent walls instead of search results. Places API works from
-any IP, returns structured data, and is generally free at this scale (Google
-gives a generous monthly quota per project).
+**Place lookup is Google Places API (New).** Puppeteer is fully removed from
+both the worker and the root frontend (`src/lib`). The migration was forced by
+Google blocking cloud-server IPs from Maps. Places API works from any IP,
+returns structured data, and is generally free at this scale.
 
 Email harvesting (`enrichFromWebsite`) and keyword clustering still work the
-same way — Places API doesn't return emails, and it hard-caps at 60 results
+same way — Places API doesn't return emails, and it hard-caps at ~60 results
 per query so clustering remains essential for high-count campaigns.
+
+**What changed since the last doc pass (commits `a32771b`..`cfcd491`):**
+- **Outreach grew from a one-shot composer into a full sequencer.** A 4-step
+  campaign **wizard** (`/user/outreach/new`) creates campaign + steps + prospects
+  + sender assignments atomically via `POST /api/outreach/campaigns/create-full`.
+- **Multi-provider senders.** Users connect their own mailboxes (Gmail, Outlook/
+  M365, Titan, Zoho, Yahoo, or arbitrary custom SMTP/IMAP). Credentials are
+  live-verified on add and stored in `outreach_senders`. The worker round-robins
+  across a campaign's senders, respecting per-sender daily caps.
+- **Unibox.** IMAP polling pulls replies into `outreach_replies`; the
+  `/user/inbox` page is a Gmail-style triage UI (categories, star, archive,
+  notes, search, inline threaded reply).
+- **Open tracking** via a 1×1 pixel at `/api/track/open/[token]`.
+- **Relay-through-Vercel send path.** Railway's egress IPs get blocked by
+  Gmail/IMAP, so the worker POSTs send/poll work to Vercel routes
+  (`/api/worker/send-mail`, `/api/outreach/inbox-check`) which run on cleaner IPs.
+- **Trial billing.** Signup now grants **0 credits**; users start a **$1 / 7-day
+  trial** (100 credits) that auto-converts to a chosen plan. A worker job charges
+  off-session at trial end.
+- **Dedicated admin login** at `/leadmachineadmin` (noindexed), separate from the
+  user `/login`.
+- **Background-jobs page** (`/user/jobs`) polls `scan_runs` for live scrape status.
 
 ## Architecture
 
 ```
-Browser ↔ Vercel (Next.js)          ↔ Supabase (auth + DB + RLS)
-                ↕  SSE + Bearer
-            Railway (Express worker, Puppeteer)
-                ↕  parallel HTTP
-            Target websites (email harvest)
+Browser ↔ Vercel (Next.js)              ↔ Supabase (auth + DB + RLS)
+            ↕ SSE+Bearer   ↑ relay (send-mail / inbox-check)
+        Railway (Express worker)
+            ├─ Places API (place lookup)   → target websites (email harvest)
+            ├─ outreach-tick  (15 min)     → send next step via senders
+            ├─ inbox-check    (10 min)     → IMAP poll for replies
+            └─ trial-charge   (hourly)     → Stripe off-session conversion
 ```
 
 - **Vercel (frontend)** — Next.js 15 App Router. Marketing site, auth UI, user
-  dashboard, admin console. The `/api/google-maps-search` route is a thin SSE
-  proxy to the Railway worker (when `WORKER_URL` env is set).
-- **Railway (worker)** — Express server in `/worker`. Owns Puppeteer +
-  email-harvest crawl. Writes leads + contacts directly to Supabase via the
-  service-role key. Streams SSE progress back to the frontend.
+  dashboard, admin console. `/api/google-maps-search` is a thin SSE proxy to the
+  Railway worker when `WORKER_URL` is set. Also hosts **relay routes** the worker
+  calls back into (`/api/worker/send-mail`, `/api/outreach/inbox-check`) to send
+  email and poll IMAP from Vercel's IPs instead of Railway's (which Gmail blocks).
+- **Railway (worker)** — Express server in `/worker`. Runs the lead-gen scrape +
+  email-harvest crawl, and three background loops: **outreach-tick** (sends the
+  next due step, every 15 min), **inbox-check** (IMAP reply poll, every 10 min),
+  and **trial-charge** (Stripe off-session conversion at trial end, hourly).
+  Writes to Supabase via the service-role key.
 - **Supabase** — Postgres + Auth + RLS. Service-role key is held only by the
-  Railway worker and Stripe webhook handler.
+  Railway worker and the Vercel server-side routes (Stripe webhook, relay,
+  open-tracking). Never exposed to the client.
 
 **Dev mode fallback:** if `WORKER_URL` is unset (no `.env.local` entry), the
 frontend's `/api/google-maps-search` runs the scrape **in-process** using the
@@ -73,10 +103,13 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 - **Supabase** (`@supabase/ssr` + `@supabase/supabase-js`) for auth + DB
 - **Google Places API (New)** — Text Search for place lookup. Replaced Puppeteer
   after Google started blocking cloud-server IPs from Maps.
-- **Stripe** for billing — `mode: payment` (one-time lifetime credit packs,
-  NOT subscriptions)
-- **Resend** (optional) for transactional email; mailer falls back to
-  `console.log` when `RESEND_API_KEY` is absent
+- **Stripe** for billing — `mode: payment` (one-time lifetime credit packs) +
+  a **$1 / 7-day trial** that auto-converts off-session (PaymentIntent, saved
+  card) to the chosen plan. NOT recurring subscriptions.
+- **Nodemailer** (SMTP) + **imapflow** (IMAP) + **mailparser** (MIME) power the
+  outreach send/reply stack across multiple providers.
+- **Resend** (optional) for transactional + outreach email fallback; mailer
+  falls back to `console.log` when no provider is configured.
 - **xlsx** (SheetJS) for Excel exports
 - **TypeScript** strict mode; project compiles clean with `tsc --noEmit`
 
@@ -95,14 +128,16 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   ├── user/                     user dashboard (AppShell)
 │   │   │   ├── page.tsx              KPIs + lead growth sparkline + quality
 │   │   │   ├── generate/             AI-style streaming generate flow
+│   │   │   ├── jobs/                 live background-job page (polls scan_runs)
 │   │   │   ├── leads/                CRM table + drawer + filters + export
-│   │   │   ├── campaigns/            scan_runs history
-│   │   │   ├── billing/              lifetime credit packs (Stripe checkout)
-│   │   │   ├── outreach/             list + new + [id]: multi-step sequences
-│   │   │   │                          on autopilot. Replaces the prior one-
-│   │   │   │                          shot email-campaigns flow.
+│   │   │   ├── outreach/             list + new (4-step wizard) + [id]: multi-
+│   │   │   │                          step sequences on autopilot
+│   │   │   ├── inbox/                Unibox — IMAP reply triage UI
+│   │   │   ├── senders/              connect/manage sending mailboxes
+│   │   │   ├── billing/              trial + lifetime credit packs (Stripe)
 │   │   │   ├── settings/             profile + plan
 │   │   │   └── layout.tsx            wraps in AppShell, gates suspended users
+│   │   ├── leadmachineadmin/         dedicated admin sign-in (noindexed)
 │   │   ├── admin/                    admin console (AdminShell — distinct UI)
 │   │   │   ├── page.tsx              overview KPIs + chart + quick links
 │   │   │   ├── users/                AdminUsersTable: +/- credits, suspend, delete
@@ -111,16 +146,26 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   │   └── layout.tsx
 │   │   └── api/
 │   │       ├── google-maps-search/   SSE — proxies to worker if WORKER_URL set
-│   │       ├── leads/                user lead list + per-runId filter
+│   │       ├── search/               place-search helper
+│   │       ├── leads/                lead list + per-runId filter; leads/discover
 │   │       ├── scan/runs/            campaign list
 │   │       ├── billing/checkout/     Stripe checkout (payment mode, lifetime)
+│   │       ├── billing/trial/        starts $1/7-day trial (saves card on file)
 │   │       ├── billing/webhook/      Stripe webhook → grants credits + sends email
-│   │       ├── outreach/campaigns/   GET (list), POST (create draft); [id]
-│   │       │                          PATCH/DELETE; [id]/steps PUT (replace
-│   │       │                          whole sequence atomically); [id]/start
-│   │       │                          POST (activate + poke worker tick);
-│   │       │                          [id]/prospects POST (import by leadIds)
+│   │       ├── outreach/campaigns/   GET (list), POST (draft); create-full POST
+│   │       │                          (wizard: campaign+steps+prospects+senders
+│   │       │                          atomically); [id] PATCH/DELETE; [id]/steps
+│   │       │                          PUT; [id]/start POST; [id]/send-now POST
+│   │       │                          ("send all now", fast mode); [id]/prospects
 │   │       ├── outreach/prospects/   [id] PATCH (mark replied/bounced) + DELETE
+│   │       ├── outreach/senders/     GET/POST (add + live-verify SMTP/IMAP); [id]
+│   │       │                          PATCH (pause/limit/rename) + DELETE
+│   │       ├── outreach/inbox-check/ POST — IMAP poll from Vercel ("Check now")
+│   │       ├── outreach/replies/     [id] PATCH (star/category/archive/notes);
+│   │       │                          [id]/send POST (threaded inline reply)
+│   │       ├── outreach/test-send/   send a test email to your own inbox
+│   │       ├── track/open/[token]/   1×1 open-tracking pixel
+│   │       ├── worker/send-mail/     relay: worker → Vercel SMTP send (clean IP)
 │   │       ├── admin/credits/        legacy single-user credit grant
 │   │       ├── admin/users/          admin actions (credits +/-, suspend, delete)
 │   │       ├── enterprise/           enterprise interest form
@@ -141,16 +186,21 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   ├── leads/LeadsCrm.tsx        table-fixed CRM with sort, filter, drawer,
 │   │   │                              CSV + Excel export, campaign-scoped view
 │   │   ├── campaigns/CampaignsTable.tsx
-│   │   ├── outreach/                 StatusBadge, NewCampaignForm,
-│   │   │                              CampaignDetail (wrapper), SequenceEditor
-│   │   │                              (multi-step builder), ProspectsManager
-│   │   │                              (list + AddProspectsPanel)
+│   │   ├── outreach/                 OutreachDashboard, CampaignWizard (4-step
+│   │   │                              create flow), CampaignDetail, SequenceEditor,
+│   │   │                              ProspectsManager, SendersManager,
+│   │   │                              CampaignStatsBar, StatusBadge, TestSendCard,
+│   │   │                              UniboxList, InboxCheckButton,
+│   │   │                              ConnectedInboxesStrip
 │   │   ├── admin/AdminUsersTable.tsx per-row actions with confirmation modals
 │   │   └── billing/BillingPanel.tsx
 │   └── lib/
 │       ├── supabase/                 server + client + middleware session
 │       ├── avatar.ts                 initialsFor() — app uses initials only
-│       ├── stripe.ts                 client + price-id map + credit grants
+│       ├── stripe.ts                 client + price-id map + credit grants +
+│       │                              trial constants ($1/100cr/7-day)
+│       ├── sender-providers.ts       SMTP/IMAP presets for Gmail/Outlook/Titan/
+│       │                              Zoho/Yahoo + custom; validation helpers
 │       ├── mailer.ts                 Resend-or-console mailer + plan-activated tmpl
 │       ├── email-templates.ts        outreach templates + {{name}}/{{category}}/
 │       │                              {{sender}} placeholder renderer
@@ -170,15 +220,21 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │       └── osm.ts, google-maps.ts    legacy, unused in current product flow
 ├── worker/                            deploys to Railway (Dockerfile root dir = /worker)
 │   ├── src/
-│   │   ├── server.ts                 Express + SSE /scrape, Bearer auth,
-│   │   │                              heartbeat, /outreach/tick endpoint,
-│   │   │                              and 15-min setInterval kicking the
-│   │   │                              outreach autopilot
+│   │   ├── server.ts                 Express + SSE /scrape, Bearer auth, heartbeat,
+│   │   │                              /outreach/tick + /inbox/check endpoints, and
+│   │   │                              3 background loops: outreach-tick (15m),
+│   │   │                              inbox-check (10m), trial-charge (hourly)
 │   │   ├── scrape-job.ts             orchestrator: scrape → cluster-expand →
 │   │   │                              insert leads → harvest emails → mark complete
-│   │   ├── outreach-tick.ts          autopilot: fetch active campaigns, find
-│   │   │                              due prospects, render templates, send via
-│   │   │                              Resend, advance state, sweep completed
+│   │   ├── outreach-tick.ts          autopilot: active campaigns → due prospects →
+│   │   │                              render → round-robin senders → send (relay
+│   │   │                              via Vercel) → advance state → sweep completed.
+│   │   │                              Send window, per-campaign daily limit,
+│   │   │                              30–90s humanization, retry/backoff, fast mode
+│   │   ├── inbox-check.ts            IMAP poll across active senders → parse MIME →
+│   │   │                              upsert outreach_replies, mark prospects replied
+│   │   ├── trial-charge.ts           sweep due trials → Stripe off-session charge →
+│   │   │                              convert plan / mark failed
 │   │   ├── places-api.ts             Google Places API (New) Text Search client
 │   │   ├── scraper.ts                thin wrapper over places-api.ts emitting
 │   │   │                              the legacy ProgressEvent shape
@@ -187,17 +243,28 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   └── db.ts                     Supabase service-role client
 │   ├── Dockerfile                    node:22-slim (no Chromium — Places API is HTTP)
 │   ├── railway.json                  buildCommand + healthcheck /health
-│   └── package.json                  separate deps (just express + supabase-js)
+│   └── package.json                  separate deps (express, supabase-js,
+│                                      nodemailer, imapflow, mailparser, stripe)
 ├── supabase/                         SQL migrations (run in Supabase SQL Editor)
 │   ├── schema.sql                    base tables + RLS + triggers (run FIRST)
 │   ├── add_scan_lead_tables.sql      scan_runs, leads, lead_contacts (idempotent)
 │   ├── admin_user_actions.sql        adds `suspended` column + admin delete policy
 │   ├── credit_reservation.sql        reserve_search_credits / refund_search_credits
 │   ├── email_outreach.sql            email_sends table + RLS (idempotent)
-│   ├── outreach_campaigns.sql        outreach_campaigns + outreach_steps +
-│   │                                  outreach_prospects + extends email_sends
-│   │                                  with campaign_id/step_order (idempotent)
-│   ├── fix_rls_recursion.sql         older patch, may not be needed on fresh installs
+│   ├── outreach_campaigns.sql        outreach_campaigns/steps/prospects + extends
+│   │                                  email_sends with campaign_id/step_order
+│   ├── fix_rls_recursion.sql         older RLS patch
+│   ├── outreach_v2.sql               send windows, retry/bounce tracking
+│   ├── outreach_v3.sql               outreach_senders, outreach_campaign_senders,
+│   │                                  email_opens, open_token on email_sends
+│   ├── outreach_v4.sql               campaign-level daily_limit
+│   ├── outreach_v5.sql               outreach_replies + last_inbox_check_at
+│   ├── outreach_v6.sql               make email_sends.lead_id nullable
+│   ├── outreach_v7.sql               Unibox: star/category/archive/notes on replies
+│   ├── outreach_v8.sql / v8b.sql     per-step delay_unit (days/hours, then minutes)
+│   ├── senders_multi_provider.sql    smtp/imap host+port+secure cols; provider freed
+│   ├── trial_subscriptions.sql       profiles trial_* cols + stripe_customer_id
+│   ├── zero_signup_credits.sql       default credits 10 → 0
 │   ├── promote_admin.sql             one-time: edit email + run to grant admin
 │   └── backfill_profiles.sql         one-time for users created before trigger
 ├── middleware.ts                     Supabase session refresh on every request
@@ -210,22 +277,32 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 **Public:**
 - `/` — marketing home with hero, features, how-it-works, preview, testimonials, pricing, FAQ, footer CTA
 - `/how-it-works`, `/pricing`, `/faq` — standalone marketing pages
-- `/login` — has User / Admin segmented toggle; validates role on submit
+- `/login` — user sign-in (show/hide password)
 - `/signup` — two-column sales pitch on left, form on right
+- `/leadmachineadmin` — **dedicated admin sign-in**, noindexed. Separate URL so
+  user and admin credentials can't be confused and a compromised user login is
+  bounded to `/user`.
 
-**User app** (`AppShell` — left sidebar with Dashboard / Generate / Leads /
-Campaigns / Billing / Outreach / Settings / Admin (if admin)):
-- `/user` — dashboard
+**User app** (`AppShell` — left sidebar with Dashboard / Generate / Jobs / Leads /
+Outreach / Inbox / Senders / Billing / Settings / Admin (if admin)):
+- `/user` — dashboard (KPIs, lead growth, open rate)
 - `/user/generate` — niche + location + count + SSE animated progress
+- `/user/jobs` — live background-job page; polls `scan_runs.result_count`
 - `/user/leads` — CRM table; supports `?campaign={runId}` for campaign-scoped view
-- `/user/campaigns` — scan_runs history with "View leads" deep links
-- `/user/billing` — credit packs (Stripe checkout)
-- `/user/outreach` — list of outreach campaigns (multi-step sequences)
-- `/user/outreach/new` — pick name + source niche; redirects to detail
-- `/user/outreach/[id]` — detail/edit: rename, sequence editor (multi-step
-  with subject/body/delay_days/template picker), prospects manager (add from
-  source niche, mark replied/bounced, remove), Start/Pause/Delete actions.
-  Sends fire on the Railway worker's 15-min autopilot tick.
+- `/user/outreach` — list of outreach campaigns + dashboard stats; per-card
+  Pause/Resume
+- `/user/outreach/new` — **4-step wizard**: pick prospect list(s) → build sequence
+  → attach senders → review/start. Creates everything atomically via create-full.
+- `/user/outreach/[id]` — detail/edit: rename, sequence editor (subject/body/
+  delay with days·hours·minutes unit + template picker), prospects manager,
+  attached senders, stats bar, Start / Pause / Send-all-now / test-send / Delete.
+  Sends fire on the worker's 15-min tick (or instantly via Send-all-now fast mode).
+- `/user/inbox` — **Unibox**: IMAP-polled replies with tabs (All/Unread/Starred/
+  Interested/Meeting/Not interested/OOO/Archived), search, star, category tags,
+  notes, inline threaded reply, "Reply in Gmail", and a "Check now" button.
+- `/user/senders` — connect mailboxes (Gmail/Outlook/Titan/Zoho/Yahoo/custom);
+  per-sender status, daily-quota bar, pause/resume, disconnect.
+- `/user/billing` — trial + credit packs (Stripe)
 - `/user/settings` — profile + plan info
 
 **Admin console** (`AdminShell` — distinct visual theme, own sidebar):
@@ -236,57 +313,90 @@ Campaigns / Billing / Outreach / Settings / Admin (if admin)):
 
 ## Data model (Supabase)
 
-Run order in SQL editor:
+Run order in SQL editor (fresh install — all idempotent):
 1. `supabase/schema.sql`
 2. `supabase/add_scan_lead_tables.sql`
 3. `supabase/admin_user_actions.sql`
 4. `supabase/credit_reservation.sql`
 5. `supabase/email_outreach.sql`
 6. `supabase/outreach_campaigns.sql`
+7. `supabase/fix_rls_recursion.sql`
+8. `supabase/outreach_v2.sql`
+9. `supabase/outreach_v3.sql`
+10. `supabase/outreach_v4.sql`
+11. `supabase/outreach_v5.sql`
+12. `supabase/outreach_v6.sql`
+13. `supabase/outreach_v7.sql`
+14. `supabase/outreach_v8.sql` → `outreach_v8b.sql`
+15. `supabase/senders_multi_provider.sql`
+16. `supabase/trial_subscriptions.sql`
+17. `supabase/zero_signup_credits.sql`
+Then one-time: `promote_admin.sql` (edit email first), `backfill_profiles.sql`.
 
 **Tables:**
-- `profiles` (id FK auth.users, email, full_name, role, plan, credits, suspended, created_at, updated_at)
+- `profiles` (id FK auth.users, email, full_name, role, plan, **credits (default 0)**,
+  suspended, **stripe_customer_id**, **trial_started_at**, **trial_ends_at**,
+  **trial_target_plan**, **trial_status**, **trial_last_error**, created_at, updated_at)
 - `enterprise_requests` (id, user_id, email, note, status, created_at)
 - `scan_runs` (id, user_id, source, keyword, location, status, limit_count, result_count, started_at, finished_at, error)
 - `leads` (id, user_id, scan_run_id, source, name, category, address, rating, review_count, maps_url, website_url, dedupe_key, created_at)
 - `lead_contacts` (id, lead_id, phone, email, website_url, source_url, created_at)
-- `email_sends` (id, user_id, lead_id, scan_run_id, **campaign_id**, **step_order**, recipient_email, subject, body, status, error, provider_message_id, attachment_count, sent_at, created_at)
-- `outreach_campaigns` (id, user_id, scan_run_id, name, status, created_at, started_at, finished_at) — status in draft/active/paused/completed
-- `outreach_steps` (id, campaign_id, step_order, delay_days, subject, body, created_at) — unique on (campaign_id, step_order); step 1 has delay_days=0
-- `outreach_prospects` (id, campaign_id, lead_id, email, status, current_step, next_send_at, last_sent_at, added_at) — unique on (campaign_id, lead_id); status in pending/in_progress/replied/bounced/completed/failed
+- `email_sends` (id, user_id, lead_id (nullable), scan_run_id, campaign_id, step_order, recipient_email, subject, body, status, error, provider_message_id, attachment_count, **open_token (unique)**, **open_count**, **first_opened_at**, sent_at, created_at)
+- `outreach_campaigns` (id, user_id, scan_run_id, name, status, **send_window_start**, **send_window_end**, **send_days[]**, **timezone**, **daily_limit (default 50, 1–500)**, created_at, started_at, finished_at) — status in draft/active/paused/completed
+- `outreach_steps` (id, campaign_id, step_order, delay_days, **delay_unit (minutes/hours/days)**, subject, body, created_at) — unique on (campaign_id, step_order); step 1 = no delay
+- `outreach_prospects` (id, campaign_id, lead_id, email, status, current_step, next_send_at, last_sent_at, **retry_count**, **bounce_reason**, added_at) — unique on (campaign_id, lead_id); status in pending/in_progress/replied/bounced/completed/failed
+- **`outreach_senders`** (id, user_id, email, display_name, provider, app_password (encrypted at rest), smtp_host/port/secure, imap_host/port/secure, daily_limit, sends_today, last_reset_at, last_inbox_check_at, status (active/paused/error), last_error, created_at) — unique on (user_id, email)
+- **`outreach_campaign_senders`** (campaign_id, sender_id) — PK (campaign_id, sender_id); which senders a campaign rotates across
+- **`email_opens`** (id, send_id FK email_sends, opened_at, ip, user_agent)
+- **`outreach_replies`** (id, user_id, sender_id, prospect_id, lead_id, campaign_id, message_id, from_email, from_name, subject, snippet, received_at, read_at, starred, category, archived_at, notes, created_at) — unique on (sender_id, message_id); category in interested/meeting_booked/not_interested/out_of_office/unsubscribe/wrong_person/other
 
 **Functions:**
 - `is_admin()` — used in RLS policies (SECURITY DEFINER, avoids RLS recursion)
 - `handle_new_user()` — trigger on auth.users INSERT → creates profile
-- `lock_sensitive_profile_cols()` — trigger preventing users from changing their own role/credits/email
+- `lock_sensitive_profile_cols()` — trigger preventing users from changing their own role/credits/email/plan (except → enterprise)
 - `consume_search_credit()` — legacy single-credit decrement (still works, no longer used)
 - `reserve_search_credits(amount)` — deducts N credits up front
 - `refund_search_credits(amount)` — refunds unused credits
 
-**RLS:** users can read/insert/update their own rows; admins can read/update/delete all.
+**RLS:** users read/insert/update their own rows; admins read/update/delete all.
+Worker (service role) inserts `email_sends`, `email_opens`, `outreach_replies`.
 Cascade chain: auth.users → profiles → scan_runs → leads → lead_contacts.
+`outreach_senders.app_password` is encrypted at rest and never returned to the client.
 
 ## Auth flow
 
-1. Login form has User/Admin segmented toggle (`src/app/login/login-form.tsx`)
-2. On submit: `signInWithPassword` → fetch `profiles.role` → route accordingly
-   - User tab: routes to `/user`
-   - Admin tab: validates `role === "admin"`; if not, signs out + shows error
-3. Suspended users (`profiles.suspended === true`) get redirected to a
+1. **Users** sign in at `/login` (`src/app/login/login-form.tsx`):
+   `signInWithPassword` → routes to `/user`.
+2. **Admins** sign in at `/leadmachineadmin` (`admin-login-form.tsx`), a separate
+   noindexed URL: validates `role === "admin"`; if not, signs out + shows error.
+   Keeping it on its own URL bounds the blast radius of a leaked user login.
+3. Suspended users (`profiles.suspended === true`) get redirected to an
    "Account suspended" screen by `src/app/user/layout.tsx` before they reach
-   any user-facing page
+   any user-facing page.
 
-## Billing model — lifetime credit packs (NOT subscriptions)
+## Billing model — trial + lifetime credit packs (NOT recurring subscriptions)
 
-- 3 paid tiers: Starter ($49 / 250 credits), Premium ($149 / 1000), Pro ($399 / 5000)
-- 4th tier Enterprise → talk-to-sales modal, no checkout
-- All plans are **one-time payment** (`mode: "payment"` in Stripe checkout)
-- Webhook (`/api/billing/webhook`) only handles `checkout.session.completed`
-- On completion: bump `profiles.plan`, add credits to balance, send confirmation email
-- **1 lead = 1 credit**. Credits are reserved up front via
-  `reserve_search_credits(amount)` and the unused portion is refunded after the
-  scrape (`refund_search_credits(limit - delivered)`).
-- Enterprise plan = unmetered (no credit deduction)
+- **Signup grants 0 credits** (`zero_signup_credits.sql`). New users must start a
+  trial or buy a plan to use the product.
+- **$1 / 7-day trial** (`/api/billing/trial`): grants 100 credits immediately,
+  saves the card on file (Stripe customer + PaymentIntent), and records
+  `trial_target_plan`. Constants in `src/lib/stripe.ts` (`TRIAL_PRICE_CENTS=100`,
+  `TRIAL_CREDIT_GRANT=100`, `TRIAL_DURATION_DAYS=7`).
+- **Trial conversion** is handled by the worker's hourly `trial-charge` job: at
+  `trial_ends_at`, it charges the target plan **off-session** against the saved
+  card. Success → `trial_status='converted'` + plan credits granted; failure →
+  `trial_status='failed'` + `trial_last_error`. Webhook records the payment.
+- 3 paid tiers (one-time, `mode: "payment"`): Starter / Premium / Pro. 4th tier
+  Enterprise → talk-to-sales modal, no checkout.
+- Webhook (`/api/billing/webhook`) handles `checkout.session.completed` (pack
+  purchase) and the trial PaymentIntent flow.
+- On grant: bump `profiles.plan`, add credits to balance, send confirmation email.
+- **Lead generation: 1 lead = 1 credit.** Reserved up front via
+  `reserve_search_credits(amount)`; unused portion refunded after the scrape
+  (`refund_search_credits(limit - delivered)`).
+- **Outreach: 1 credit per prospect for step 1 only** (follow-up steps are free),
+  charged at campaign start / when adding prospects to an active campaign.
+- Enterprise plan = unmetered (no credit deduction).
 
 ## Lead generation pipeline
 
@@ -328,7 +438,65 @@ With Places API being so fast (sub-second per call), the dedicated Railway
 worker is mostly unnecessary — the whole pipeline could fit inside a Vercel
 function comfortably. The `WORKER_URL`/`WORKER_TOKEN` plumbing is still in
 place so deployments can choose; revisit if you want to decommission Railway
-and simplify the stack to just Vercel + Supabase.
+and simplify the stack to just Vercel + Supabase. **Note:** the outreach
+autopilot + inbox poll + trial-charge loops need a long-running process, so the
+worker can't be fully retired without moving those to cron.
+
+## Outreach pipeline (cold email)
+
+### Senders (`/user/senders`, `outreach_senders`)
+- Users connect their own mailboxes. Presets in `src/lib/sender-providers.ts`:
+  **Gmail** (smtp 465 / imap 993, app password), **Outlook/M365** (smtp 587
+  STARTTLS), **Titan**, **Zoho**, **Yahoo**, or **custom** SMTP+IMAP.
+- `POST /api/outreach/senders` **live-verifies** credentials with a real
+  nodemailer `transporter.verify()` before inserting. Bad creds → friendly error.
+- `app_password` is encrypted at rest and never returned to the client.
+- Each sender has a `daily_limit` (provider ceiling) + `sends_today` counter that
+  rolls over at UTC midnight. Status: active / paused / error.
+
+### Campaign creation (4-step wizard → `create-full`)
+`/user/outreach/new` (`CampaignWizard`) collects: prospect list(s) from completed
+scans with emailable leads → sequence steps → senders → optional start-now.
+`POST /api/outreach/campaigns/create-full` does it all atomically: create
+campaign (draft) → insert steps (step 1 forced to zero delay) → import all
+leads-with-emails as prospects → attach senders via `outreach_campaign_senders`
+→ if `startNow` and credits available, activate + queue + poke the worker.
+
+### Sending (worker `outreach-tick.ts`, every 15 min)
+1. Load active campaigns + steps + senders + schedule (send window, send days,
+   timezone, `daily_limit`).
+2. Skip campaigns outside their send window or already at the daily limit
+   (unless **fast mode**).
+3. Find due prospects (`status in (pending,in_progress)` AND `next_send_at <= now`),
+   limit 200; **claim** them by bumping `next_send_at` +10 min (anti-double-send).
+4. Per prospect: pick next step → render `{{name}}/{{category}}/{{sender}}` →
+   30–90 s humanization pause → **round-robin** pick a sender with headroom →
+   send (with open-tracking pixel) → advance `current_step`, compute next
+   `next_send_at` from the next step's `delay_unit`+value, or mark `completed`.
+5. On failure: retry with backoff (1h/4h/12h), `bounced` after 3 attempts.
+6. Sweep campaigns with no remaining work → `completed`.
+
+**Send path / Railway IP block:** Gmail blocks Railway's egress IPs, so the
+worker relays sends through `POST /api/worker/send-mail` on Vercel (cleaner IPs);
+direct SMTP is only a local-dev fallback. **Send-all-now** (`/[id]/send-now`,
+fast mode) skips delays/window/limit for an instant blast. **Test-send**
+(`/api/outreach/test-send`) emails your own inbox before launch.
+
+### Replies (Unibox — `/user/inbox`, `outreach_replies`)
+- Worker `inbox-check.ts` (every 10 min) + the Vercel `/api/outreach/inbox-check`
+  ("Check now" button) poll each active sender's IMAP via **imapflow**, parse MIME
+  with **mailparser**, dedupe on `(sender_id, message_id)`, and upsert replies.
+- A reply only logs if its `from_email` matches a prior `email_sends` recipient
+  (filters newsletters). If it maps to a prospect, that prospect is marked
+  `replied` and follow-ups stop.
+- Unibox UI: tabs/filters, search, star, category tags, notes, and an **inline
+  threaded reply** (`/[id]/send`) sent via the matching sender's SMTP with
+  `In-Reply-To`/`References` headers.
+
+### Open tracking (`email_opens`)
+Each send embeds a 1×1 pixel `<img src="/api/track/open/{open_token}">`. The
+endpoint records an `email_opens` row + bumps `email_sends.open_count`. Caveat:
+Gmail/Apple proxy images, so treat it as "opened at least once," not exact.
 
 ## Local development
 
@@ -342,8 +510,10 @@ npm run dev
 # → http://localhost:3001
 ```
 
-Puppeteer runs **headed** locally by default (NODE_ENV !== "production"), which
-is what makes local scraping work — Google doesn't flag residential IPs.
+Place lookup uses the Google Places API, so local dev needs `GOOGLE_MAPS_API_KEY`
+in `.env.local`. (Puppeteer is fully removed — no headless browser to manage.)
+For outreach features locally, you also need at least one sender configured and
+the worker running, or the tick just logs instead of sending.
 
 Run migrations in Supabase SQL editor in the order listed under "Data model".
 Promote yourself to admin: edit `supabase/promote_admin.sql` with your email
@@ -361,7 +531,8 @@ and run it.
   - `NEXT_PUBLIC_APP_URL` (the Vercel domain — `https://lead-machine-m9i9.vercel.app`)
   - `WORKER_URL` (the Railway worker domain)
   - `WORKER_TOKEN` (shared secret — must match Railway)
-- Optional: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER/PREMIUM/PRO`, `SUPABASE_SERVICE_ROLE_KEY` (Stripe webhook), `RESEND_API_KEY`
+- Also required for relay + tracking (worker calls these back): `SUPABASE_SERVICE_ROLE_KEY`
+- Optional: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER/PREMIUM/PRO`, `RESEND_API_KEY`
 
 **Limit:** Hobby tier function duration = 30 s. The proxy-mode `/api/google-maps-search`
 route can hit this for large scrapes (the route holds open the SSE stream).
@@ -379,14 +550,15 @@ is fast enough that 30 s is plenty.
   - `SUPABASE_SERVICE_ROLE_KEY` (the long JWT from Supabase → Settings → API)
   - `GOOGLE_MAPS_API_KEY` (Places API New, with Places API New enabled in
     Google Cloud Console for the project)
-- For outreach autopilot: configure ONE of the two sender strategies:
-  - **Gmail SMTP** (no domain needed): `GMAIL_USER` (your gmail address) +
-    `GMAIL_APP_PASSWORD` (16-char app password from
-    https://myaccount.google.com/apppasswords; requires 2FA enabled).
-    Caps at ~500 sends/day per free Gmail account, ~2000/day for Workspace.
-  - **Resend HTTP API** (requires verified domain): `RESEND_API_KEY` +
-    `OUTREACH_FROM`. Used only when GMAIL_* vars are absent.
-  - With neither set, the 15-min tick logs to stdout instead of sending.
+- **Outreach sending is now per-user senders** (stored in `outreach_senders`,
+  configured in `/user/senders`) — no global Gmail/Resend env var needed for the
+  primary path. The worker relays sends through Vercel (`APP_URL` /
+  `NEXT_PUBLIC_APP_URL` + `WORKER_TOKEN`) to dodge Railway's IP block.
+  - Legacy/fallback (optional): `GMAIL_USER` + `GMAIL_APP_PASSWORD`, or
+    `RESEND_API_KEY` + `OUTREACH_FROM`. With no sender and no fallback, the tick
+    logs to stdout instead of sending.
+- For trial conversion: the worker's hourly `trial-charge` job needs
+  `STRIPE_SECRET_KEY` (off-session charges).
 - Optional: `MISTRAL_API_KEY` (AI keyword expansion), `MAIL_FROM` (fallback)
 
 ### Supabase auth URL config
@@ -498,31 +670,62 @@ is fast enough that 30 s is plenty.
   forces the SMTP "from" to match the authenticated user, so the
   Reply-To stays as the user's profile email — though when GMAIL_USER ==
   profile.email they're the same and replies just land naturally.
+- **June 2026 — outreach P2A: 4-step wizard + multi-sender + open tracking.**
+  Campaign creation became a `CampaignWizard` (prospect list → sequence →
+  senders → review) writing through `create-full`. Sends round-robin across
+  per-campaign senders. Daily limit moved from a sender setting to a campaign
+  setting. Added send-window/send-days/timezone scheduling and a 1×1
+  open-tracking pixel (`email_opens`, `open_token`). Per-step delay gained a
+  `delay_unit` (days → +hours → +minutes).
+- **June 2026 — per-user multi-provider senders.** `/user/senders` lets users
+  connect Gmail/Outlook/Titan/Zoho/Yahoo/custom mailboxes, stored in
+  `outreach_senders` with full SMTP+IMAP config (presets in
+  `src/lib/sender-providers.ts`). Credentials are live-verified via
+  `transporter.verify()` on add and encrypted at rest. This replaced the global
+  `GMAIL_*`/Resend env-var strategy as the primary send path.
+- **June 2026 — Unibox + IMAP reply polling.** `inbox-check.ts` (worker, 10-min)
+  + a Vercel `/api/outreach/inbox-check` route poll each active sender's IMAP
+  (imapflow + mailparser), upsert into `outreach_replies` (dedup on
+  sender+message_id), and auto-mark matching prospects `replied`. `/user/inbox`
+  is a Gmail-style triage UI (categories, star, archive, notes, search, inline
+  threaded reply). Replaced the manual "click to mark replied" of P1.
+- **June 2026 — relay sends/polls through Vercel.** Railway egress IPs get
+  blocked by Gmail SMTP/IMAP. The worker now POSTs to Vercel routes
+  (`/api/worker/send-mail`, `/api/outreach/inbox-check`) which run on cleaner
+  IPs. Also forced IPv4 + SMTP port 465 to stabilize Railway↔Gmail.
+- **June 2026 — trial billing + zero signup credits.** Signup grant dropped
+  10 → 0. New `$1 / 7-day` trial (`/api/billing/trial`) grants 100 credits and
+  saves a card; the worker's hourly `trial-charge.ts` auto-converts to the
+  selected plan off-session at trial end. New `profiles.trial_*` +
+  `stripe_customer_id` columns. (Price has moved over time — $1/3-day, then
+  $7/7-day; current constants in `src/lib/stripe.ts` are $1 / 100 credits / 7-day.)
+- **June 2026 — dedicated admin login URL.** Admin sign-in moved off the shared
+  `/login` toggle to its own noindexed `/leadmachineadmin` route, so user and
+  admin credentials can't be confused and a leaked user login can't reach admin.
 
 ## Open work / followups
 
-1. **Outreach P3** — Gmail OAuth + multi-sender rotation. Lets users connect
-   their own Gmail accounts via Google OAuth, sends via Gmail API instead of
-   Resend, rotates senders to respect Gmail's ~400-500/day per-account limit.
-   Needs a Google Cloud OAuth app + verification for >100 users.
-2. **Outreach P4** — automatic reply detection (extends Gmail scope to
-   `gmail.readonly` or Pub/Sub watch), open/click tracking, per-step analytics.
-3. **Outreach attachments per step** — currently deferred. Storing attachments
-   needs Supabase Storage + a per-step join table; on send the worker fetches
-   from Storage, base64-encodes, attaches to Resend payload.
-4. Decommission Railway worker is now LESS attractive — the outreach autopilot
-   tick needs to run continuously, and Vercel Cron Hobby is daily-only.
-   Either upgrade Vercel to Pro for 15-min crons (~$20/mo) or keep Railway.
-5. Real-time credit decrement animation in the topbar while scrape runs
-   (currently it just refreshes on next page load).
-6. Wait-for-CI gate, automated migrations on deploy, and a staging environment
+1. **Gmail OAuth senders** — currently senders use app passwords (requires 2FA +
+   manual app-password creation, and is ToS-grey for bulk). OAuth via the Gmail
+   API would be cleaner but needs a Google Cloud OAuth app + verification.
+2. **Reply detection is heuristic** — matches inbound `from_email` against prior
+   `email_sends`. No threading-by-`References` yet; auto-categorization is manual.
+   Click tracking + per-step analytics still unbuilt.
+3. **Outreach attachments per step** — deferred. Needs Supabase Storage + a
+   per-step join table; worker fetches + base64-encodes on send.
+4. **Open-tracking reliability** — Gmail/Apple image proxies inflate/obscure
+   opens. Treated as "opened at least once," not exact; revisit if analytics matter.
+5. Decommissioning Railway is unattractive — outreach-tick, inbox-check, and
+   trial-charge all need a long-running process (Vercel Cron Hobby is daily-only).
+6. Real-time credit decrement animation in the topbar while a scrape runs.
+7. Wait-for-CI gate, automated migrations on deploy, and a staging environment
    are unbuilt — production pushes go straight to `main`.
-7. Restrict the production `GOOGLE_MAPS_API_KEY` to a single API in Google
-   Cloud Console (Places API New only) — currently allowed for any API on
-   the project.
+8. Restrict the production `GOOGLE_MAPS_API_KEY` to Places API (New) only in
+   Google Cloud Console — currently allowed for any API on the project.
 
 ---
 
-If you're picking this up cold: run `npm run dev`, sign in as the admin user
-(`umar43310@gmail.com`), and walk Dashboard → Generate → Leads → Campaigns →
-Billing → Admin. That's the full surface area of the product.
+If you're picking this up cold: run `npm run dev`, sign in (admin at
+`/leadmachineadmin`), and walk Dashboard → Generate → Jobs → Leads → Outreach
+(create a campaign via the wizard) → Senders → Inbox → Billing → Admin. That's
+the full surface area of the product.
