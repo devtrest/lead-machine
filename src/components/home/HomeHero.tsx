@@ -51,15 +51,15 @@ export function HomeHero({
             AI-powered lead generation
           </div>
           <h1 className="mt-5 text-4xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-6xl md:leading-[1.05]">
-            Real leads for any{" "}
-            <span className="brand-text-gradient">niche</span>,{" "}
+            Find leads and close clients{" "}
             <br className="hidden md:block" />
-            in any <span className="brand-text-gradient">city</span>.
+            <span className="brand-text-gradient">while you sleep</span>.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-[var(--ink-muted)] md:text-lg">
-            Tell Lead Machine your niche and target city. We surface verified
-            businesses with phones, emails, and websites — deduped and
-            CRM-ready in minutes.
+            Tell Lead Machine a niche and a city. We surface verified businesses
+            with phones and emails, then run your cold-email outreach on
+            autopilot — so interested replies land in one inbox while
+            you&apos;re offline.
           </p>
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
             <Link

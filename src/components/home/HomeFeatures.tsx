@@ -58,11 +58,11 @@ export function HomeFeatures() {
             Why Lead Machine
           </div>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-4xl">
-            Replace four tools with one feed.
+            Replace your whole prospecting stack.
           </h2>
           <p className="mt-3 text-sm text-[var(--ink-muted)] md:text-base">
-            Lead discovery, contact enrichment, deduping, and exports — built into a
-            single workflow your team will actually use.
+            Lead discovery, contact enrichment, deduping, exports, and automated
+            email outreach — one workflow instead of five disconnected tools.
           </p>
         </div>
 
