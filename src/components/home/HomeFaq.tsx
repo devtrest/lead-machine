@@ -9,71 +9,23 @@ type Faq = { q: string; a: string };
 const faqs: Faq[] = [
   {
     q: "How fresh are the leads?",
-    a: "Every lead is generated on-demand from live sources at the moment you request it — no stale paid lists, no recycled CRM dumps. What you see is what's currently public online.",
+    a: "Every lead is generated on-demand from live sources the moment you request it — no stale paid lists, no recycled CRM dumps. What you see is what's currently public online.",
   },
   {
     q: "What if my city only has 50 results but I need 500?",
-    a: "Our AI clusters related niches automatically — e.g. 'dentist' expands to 'orthodontist', 'oral surgeon', 'dental clinic', 'cosmetic dentistry' — and merges the results across all of them. Duplicates are removed by name + address.",
+    a: "Our AI clusters related niches automatically — e.g. 'dentist' expands to 'orthodontist', 'oral surgeon', 'dental clinic' — and merges the results, removing duplicates by name + address.",
   },
   {
-    q: "Where does the email come from?",
-    a: "We crawl each lead's website (up to 10 internal pages like /contact, /about, /team) looking for mailto links, JSON-LD schema, plain-text emails, and Cloudflare-protected emails. When no email is exposed, we fall back to DNS-validated pattern guessing.",
-  },
-  {
-    q: "Why do some leads not have phone numbers?",
-    a: "Not every business publishes a number — service-area businesses, sole proprietors, and some clinics intentionally hide phones. We surface what's public; we never make up numbers.",
-  },
-  {
-    q: "How does the credit system work?",
-    a: "1 credit = 1 lead delivered to your database. Credits are reserved when you start a campaign and any unused portion is refunded automatically when the run finishes (e.g. you ask for 500 but only 312 exist, you get 188 back).",
-  },
-  {
-    q: "Do credits expire?",
-    a: "No — every plan is a one-time purchase. Your credits sit in your account until you use them. No monthly resets, no 'use it or lose it'.",
+    q: "Can I send the outreach directly from Lead Machine?",
+    a: "Yes. Connect your mailbox (Gmail, Outlook, and more) and the autopilot sends multi-step sequences with humanized delays, send windows, and daily caps. Replies route back to you and surface in a unified inbox.",
   },
   {
     q: "What's the trial?",
-    a: "$1 for 7 days, 100 credits up front. After the trial period we auto-charge the plan you picked at trial start. Cancel any time before then in Settings and we won't charge.",
-  },
-  {
-    q: "Can I get a refund?",
-    a: "Yes, within 14 days of purchase if you've used less than 25% of your credits. Email support and we'll process it within two business days.",
-  },
-  {
-    q: "Can I send emails directly from Lead Machine?",
-    a: "Yes. Connect a Gmail account via app-password (no domain or SMTP server needed). The outreach autopilot sends multi-step sequences with humanized delays, send windows, and daily caps so you don't get throttled.",
-  },
-  {
-    q: "How many emails per day per Gmail account?",
-    a: "Free Gmail tops out around 500 sends/day; Google Workspace around 2,000. The campaign builder lets you cap below that and rotate across multiple connected accounts to scale further.",
-  },
-  {
-    q: "Will my replies land in my inbox?",
-    a: "Yes — every send sets the Reply-To header to your verified inbox, so prospect replies route straight back to you. Our unified inbox view also surfaces them inside the app.",
-  },
-  {
-    q: "Can I export to my CRM?",
-    a: "Every lead is CSV and Excel exportable today, with the exact column shape HubSpot, Pipedrive, and Salesforce accept. Direct CRM connectors are on the roadmap for Q3.",
-  },
-  {
-    q: "Can I import the leads into a cold-email tool?",
-    a: "Yes — the CSV export matches the import schema for Instantly, Smartlead, Apollo, Lemlist and Mailshake. You can also use our built-in outreach module to skip the export entirely.",
-  },
-  {
-    q: "Is there an API?",
-    a: "A REST API for programmatic lead generation is in private beta. Email us if you'd like access.",
+    a: "$1 for 7 days, 100 credits up front. After the trial we auto-charge the plan you picked at trial start. Cancel any time before then in Settings and we won't charge.",
   },
   {
     q: "Is this compliant with GDPR / CCPA?",
-    a: "Lead Machine surfaces publicly available business contact data — the same data you'd find by searching Google yourself. We don't sell personal/private records, and businesses can request removal at any time.",
-  },
-  {
-    q: "How is my data stored?",
-    a: "Every campaign and lead is isolated to your account with Postgres row-level security. Service-role keys are held only by the backend worker. We never share data between accounts.",
-  },
-  {
-    q: "Do you train AI on my campaigns?",
-    a: "No. Your lead data, contact lists, and outreach sequences are never used to train any model.",
+    a: "Lead Machine surfaces publicly available business contact data — the same data you'd find by searching yourself. We don't sell private records, and businesses can request removal at any time.",
   },
 ];
 
