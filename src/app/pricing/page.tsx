@@ -43,8 +43,8 @@ export default async function PricingPage() {
         }
         subtitle="One-time payment for lifetime access. Credits never expire. No subscriptions, no surprises."
       />
-      <div className="mx-auto max-w-6xl px-5 md:px-8">
-        <PricingSection signedIn={signedIn} />
+      <div className="mx-auto max-w-7xl px-5 md:px-8">
+        <PricingSection signedIn={signedIn} hideHeader />
       </div>
       <HomeFaq />
       <HomeFooter signedIn={signedIn} isAdmin={isAdmin} />

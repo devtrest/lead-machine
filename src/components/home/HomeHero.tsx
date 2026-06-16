@@ -38,7 +38,7 @@ export function HomeHero({
       />
       <div className="dot-grid absolute inset-0 opacity-40" aria-hidden />
 
-      <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-12 md:px-8 md:pb-24 md:pt-20">
+      <div className="relative mx-auto max-w-7xl px-5 pb-16 pt-12 md:px-8 md:pb-24 md:pt-20">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}

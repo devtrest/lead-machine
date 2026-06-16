@@ -42,7 +42,7 @@ export default async function HomePage() {
         <HomeHowItWorks />
         <HomePreview />
         <HomeTestimonials />
-        <div className="mx-auto max-w-6xl px-5 md:px-8">
+        <div className="mx-auto max-w-7xl px-5 md:px-8">
           <PricingSection signedIn={signedIn} />
         </div>
         <HomeFaq />

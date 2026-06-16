@@ -113,7 +113,7 @@ export function HomeFooter({
         aria-hidden
       />
 
-      <div className="relative mx-auto max-w-6xl px-5 pb-10 pt-14 md:px-8 md:pt-16">
+      <div className="relative mx-auto max-w-7xl px-5 pb-10 pt-14 md:px-8 md:pt-16">
         <div className="grid gap-10 md:grid-cols-[1.4fr_2fr]">
           {/* Brand + newsletter */}
           <motion.div

@@ -9,6 +9,9 @@ type Props = {
   signedIn: boolean;
   /** Legacy prop, ignored — design is unified light. */
   editorial?: boolean;
+  /** Hide the section's own title/subtitle (e.g. the /pricing page already
+   *  renders a PageHero, so the inline header would duplicate it). */
+  hideHeader?: boolean;
 };
 
 const tiers = [
@@ -71,7 +74,7 @@ const tiers = [
   },
 ];
 
-export function PricingSection({ signedIn }: Props) {
+export function PricingSection({ signedIn, hideHeader }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
@@ -129,17 +132,19 @@ export function PricingSection({ signedIn }: Props) {
 
   return (
     <section id="plans" className="scroll-mt-28 space-y-10 py-12">
-      <div className="mx-auto max-w-2xl space-y-3 text-center">
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)]">
-          Pricing
+      {!hideHeader ? (
+        <div className="mx-auto max-w-2xl space-y-3 text-center">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand-100)] bg-[var(--brand-50)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--brand-700)]">
+            Pricing
+          </div>
+          <h2 className="text-3xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-4xl">
+            Simple plans. Real <span className="brand-text-gradient">leads</span>.
+          </h2>
+          <p className="text-sm text-[var(--ink-muted)] md:text-base">
+            One-time payment. Credits never expire. No subscriptions, no surprises.
+          </p>
         </div>
-        <h2 className="text-3xl font-semibold tracking-tight text-[var(--ink-strong)] md:text-4xl">
-          Simple plans. Real <span className="brand-text-gradient">leads</span>.
-        </h2>
-        <p className="text-sm text-[var(--ink-muted)] md:text-base">
-          One-time payment. Credits never expire. No subscriptions, no surprises.
-        </p>
-      </div>
+      ) : null}
 
       {banner ? (
         <motion.div

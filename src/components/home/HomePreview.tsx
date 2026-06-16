@@ -10,7 +10,7 @@ export function HomePreview() {
         className="absolute -right-40 top-20 h-[24rem] w-[24rem] rounded-full bg-gradient-to-br from-[var(--brand-100)] to-[var(--sky-100)] opacity-60 blur-[100px]"
         aria-hidden
       />
-      <div className="relative mx-auto max-w-6xl px-5 md:px-8">
+      <div className="relative mx-auto max-w-7xl px-5 md:px-8">
         <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <motion.div
             initial={{ opacity: 0, x: -12 }}

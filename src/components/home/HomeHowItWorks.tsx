@@ -29,7 +29,7 @@ const steps = [
 export function HomeHowItWorks() {
   return (
     <section id="how" className="scroll-mt-24 bg-[var(--surface-elev)] py-20">
-      <div className="mx-auto max-w-6xl px-5 md:px-8">
+      <div className="mx-auto max-w-7xl px-5 md:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent-100)] bg-[var(--accent-50)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-700)]">
             How it works
