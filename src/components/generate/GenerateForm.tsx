@@ -21,6 +21,25 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Counter } from "@/components/ui/Counter";
+import { useToast } from "@/components/ui/Toast";
+
+// Drain an SSE response to completion without driving the UI — keeps the
+// connection open so the server finishes the run + refunds unused credits,
+// then runs onDone (e.g. refresh the campaign list).
+async function drainStream(res: Response, onDone: () => void) {
+  try {
+    const reader = res.body?.getReader();
+    if (!reader) return;
+    for (;;) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  } catch {
+    /* connection closed / aborted — fine */
+  } finally {
+    onDone();
+  }
+}
 
 type Phase =
   | "launching"
@@ -141,6 +160,7 @@ function progressFor(state: RunningState): number {
 
 export function GenerateForm() {
   const router = useRouter();
+  const toast = useToast();
   // Empty defaults so the form looks deliberate, not pre-filled. Users always
   // see the placeholder text — no accidentally launching a "dentist in
   // Islamabad" campaign because they clicked Submit too fast.
@@ -178,7 +198,6 @@ export function GenerateForm() {
 
     const controller = new AbortController();
     abortRef.current = controller;
-    const requested = target;
 
     try {
       const res = await fetch("/api/google-maps-search", {
@@ -188,9 +207,8 @@ export function GenerateForm() {
         signal: controller.signal,
       });
 
-      if (!res.ok || !res.body) {
-        // Surface errors (out of credits, missing profile, etc.) without
-        // navigating away.
+      if (!res.ok) {
+        // Surface errors (out of credits, missing profile, etc.) inline.
         const text = await res.text().catch(() => "");
         let message = "Couldn't start campaign.";
         try {
@@ -203,81 +221,21 @@ export function GenerateForm() {
         return;
       }
 
-      // Consume the SSE stream so the live progress bar fills as the campaign
-      // runs (phases + counts), then land on the done state.
-      type Incoming = {
-        phase?: string;
-        count?: number;
-        target?: number;
-        runId?: string;
-        total?: number;
-        message?: string;
-      };
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let terminal = false;
-      let lastCount = 0;
+      // Campaign created. Don't render progress inline — it runs in the
+      // background and shows live in the Lead campaigns list below. Keep the
+      // stream draining (without blocking the UI) so the server finishes and
+      // refunds unused credits, then refresh the list totals when it's done.
+      void drainStream(res, () => router.refresh());
 
-      const handle = (ev: Incoming) => {
-        if (!ev.phase) return;
-        if (ev.phase === "saved") {
-          terminal = true;
-          setStage({
-            kind: "done",
-            runId: ev.runId,
-            total: typeof ev.total === "number" ? ev.total : lastCount,
-            requested,
-          });
-          router.refresh();
-        } else if (ev.phase === "error") {
-          terminal = true;
-          setStage({ kind: "error", message: ev.message ?? "The lead engine hit an error." });
-        } else if (ev.phase === "saving") {
-          setStage((prev) =>
-            prev.kind === "running"
-              ? { ...prev, phase: "saving" }
-              : { kind: "running", phase: "saving", count: lastCount, target: requested }
-          );
-        } else {
-          const count = typeof ev.count === "number" ? ev.count : lastCount;
-          lastCount = count;
-          setStage({
-            kind: "running",
-            phase: ev.phase as Phase,
-            count,
-            target: typeof ev.target === "number" ? ev.target : requested,
-          });
-        }
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split("\n\n");
-        buffer = chunks.pop() ?? "";
-        for (const chunk of chunks) {
-          const dataLine = chunk
-            .split("\n")
-            .find((l) => l.startsWith("data:"));
-          if (!dataLine) continue;
-          const payload = dataLine.replace(/^data:\s*/, "").trim();
-          if (!payload) continue;
-          try {
-            handle(JSON.parse(payload) as Incoming);
-          } catch {
-            /* ignore malformed keep-alive lines */
-          }
-        }
-      }
-
-      if (!terminal) {
-        // Stream ended without a final event — surface what we have + refresh
-        // so the campaign list/stats update.
-        setStage({ kind: "done", total: lastCount, requested });
-        router.refresh();
-      }
+      toast.success(
+        "Campaign started",
+        "It’s running now — watch it fill in your campaigns below."
+      );
+      setKeyword("");
+      setLocation("");
+      setTargetInput("");
+      setStage({ kind: "idle" });
+      router.refresh();
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setStage({
