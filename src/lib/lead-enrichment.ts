@@ -200,21 +200,14 @@ async function guessEmailsForDomain(domain: string): Promise<string[]> {
   return GUESSED_LOCAL_PARTS.map((lp) => `${lp}@${domain}`);
 }
 
-// Ordered best-first; we only fetch the first few (MAX_FETCH_ATTEMPTS) and stop
-// as soon as we find an email. The homepage usually carries the email in a
-// footer / JSON-LD, so most leads resolve in a single fetch.
-const CONTACT_PATHS = [
-  "",
-  "/contact",
-  "/contact-us",
-  "/about",
-  "/get-in-touch",
-  "/imprint",
-];
+// Almost every site lists its email in the homepage footer or on the contact
+// page — so we only check the homepage, then the contact page, and stop on the
+// first email. No deep crawling.
+const CONTACT_PATHS = ["", "/contact", "/contact-us"];
 
-// Hard caps that keep a single lead's enrichment fast (the old code could fetch
-// 16 pages × 12s each on a site with no listed email).
-const MAX_FETCH_ATTEMPTS = 3;
+// Hard caps that keep a single lead's enrichment fast: at most the homepage +
+// contact page.
+const MAX_FETCH_ATTEMPTS = 2;
 const FETCH_TIMEOUT_MS = 6_000;
 
 export async function enrichFromWebsite(
