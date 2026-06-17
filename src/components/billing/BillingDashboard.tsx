@@ -92,9 +92,9 @@ const PLANS: PlanCard[] = [
 type TopupCard = { id: string; credits: number; price: string; best?: boolean };
 
 const TOPUPS: TopupCard[] = [
-  { id: "pack_1000", credits: 1_000, price: "$25" },
-  { id: "pack_2000", credits: 2_000, price: "$49", best: true },
-  { id: "pack_5000", credits: 5_000, price: "$99" },
+  { id: "pack_1500", credits: 1_500, price: "$25" },
+  { id: "pack_3000", credits: 3_000, price: "$50", best: true },
+  { id: "pack_7000", credits: 7_000, price: "$99" },
 ];
 
 function fmtDate(iso: string | null): string {
