@@ -302,21 +302,44 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       .select("id")
       .eq("stripe_invoice_id", inv.id)
       .maybeSingle();
-    if (dupe) return;
+    if (dupe) {
+      console.log("[stripe-webhook] invoice.paid already granted", inv.id);
+      return;
+    }
   }
 
   const customerId =
     typeof invoice.customer === "string" ? invoice.customer : (inv.customer ?? null);
+  const invEmail = (invoice as unknown as { customer_email?: string | null })
+    .customer_email ?? null;
 
-  // Resolve plan + user as reliably as possible. The subscription's metadata
-  // (we set { user_id, plan } at creation) is the most trustworthy source.
+  // Resolve the USER first from the invoice's customer (always present) — far
+  // more reliable than the nested subscription fields. Email is a last resort.
+  let userId = await userByCustomer(supabase, customerId);
+  if (!userId && invEmail) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("email", invEmail)
+      .maybeSingle();
+    userId = (data as { id?: string } | null)?.id ?? null;
+  }
+  if (!userId) {
+    console.warn(
+      "[stripe-webhook] invoice.paid: no user for customer",
+      customerId,
+      invEmail
+    );
+    return;
+  }
+
+  // Resolve the plan: profile.trial_target_plan/plan (set at trial start) is
+  // reliable; refine from the subscription metadata / line price if available.
   let plan: string | null = null;
-  let userId: string | null = null;
   if (subscriptionId) {
     try {
       const sub = await getStripe().subscriptions.retrieve(subscriptionId);
       plan = (sub.metadata?.plan as string | undefined)?.toLowerCase() || subPlanSlug(sub);
-      userId = (sub.metadata?.user_id as string | undefined) ?? null;
     } catch (e) {
       console.warn("[stripe-webhook] could not retrieve subscription", e);
     }
@@ -325,13 +348,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     const priceId = line?.price?.id ?? line?.pricing?.price_details?.price ?? null;
     plan = (priceId && planForPriceId(priceId)) || null;
   }
-  if (!userId) userId = await userByCustomer(supabase, customerId);
-  if (!userId) {
-    console.warn("[stripe-webhook] invoice.paid: no user for customer", customerId);
-    return;
-  }
   if (!plan) {
-    // Last resort: what the user signed up to during trial.
     const { data: prof } = await supabase
       .from("profiles")
       .select("trial_target_plan,plan")
@@ -342,6 +359,10 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
         (prof as { plan?: string } | null)?.plan ??
         null);
   }
+  console.log(
+    "[stripe-webhook] invoice.paid grant",
+    JSON.stringify({ invoiceId: inv.id, userId, plan, amount_paid: invoice.amount_paid })
+  );
 
   const amount = plan ? (PLAN_CREDIT_GRANT[plan] ?? 0) : 0;
   const extra: Record<string, unknown> = {
