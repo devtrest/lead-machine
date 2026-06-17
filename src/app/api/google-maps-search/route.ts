@@ -63,6 +63,22 @@ export async function POST(req: Request) {
     return jsonError("Profile unavailable — finish Supabase setup.", 400);
   }
 
+  // Concurrency cap: at most 5 campaigns scraping at once per user. Keeps the
+  // worker load bounded and the account efficient. Checked before reserving
+  // credits so a rejected start costs nothing.
+  const MAX_CONCURRENT_RUNS = 5;
+  const { count: runningCount } = await supabase
+    .from("scan_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("status", "running");
+  if ((runningCount ?? 0) >= MAX_CONCURRENT_RUNS) {
+    return jsonError(
+      `You can run up to ${MAX_CONCURRENT_RUNS} campaigns at once. Wait for one to finish, then start another.`,
+      429
+    );
+  }
+
   const plan = profile.plan as string;
   const ceiling = ceilingForPlan(plan);
   const limit = Math.min(requestedTarget, ceiling);

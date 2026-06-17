@@ -37,6 +37,13 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
   const [lastPolledAt, setLastPolledAt] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // When the server data refreshes (e.g. GenerateForm calls router.refresh()
+  // right after starting a campaign), adopt it immediately so the new run
+  // appears without a manual page refresh — and so polling kicks in for it.
+  useEffect(() => {
+    setRuns(initialRuns);
+  }, [initialRuns]);
+
   const anyRunning = useMemo(
     () => runs.some((r) => r.status === "running"),
     [runs]
