@@ -237,6 +237,7 @@ async function startTrialSubscription({
         items: [{ price: priceId }],
         trial_end: Math.floor(endsAt.getTime() / 1000),
         default_payment_method: pm,
+        description: `Lead Machine — ${capitalize(targetPlan)} subscription`,
         metadata: { user_id: userId, plan: targetPlan },
         // If the card later fails at trial end, cancel rather than dangle.
         trial_settings: { end_behavior: { missing_payment_method: "cancel" } },
@@ -267,39 +268,102 @@ async function startTrialSubscription({
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
   // Only paid subscription invoices grant credits. Skip $0 (trial) invoices.
   if ((invoice.amount_paid ?? 0) <= 0) return;
+
+  // Stripe moved several invoice fields across API versions, so dig defensively.
   const inv = invoice as unknown as {
-    subscription?: string | null;
     id?: string;
     customer?: string | null;
-    lines?: { data?: Array<{ price?: { id?: string } | null }> };
+    subscription?: string | null;
+    parent?: { subscription_details?: { subscription?: string | null } };
+    lines?: {
+      data?: Array<{
+        subscription?: string | null;
+        price?: { id?: string } | null;
+        pricing?: { price_details?: { price?: string } };
+        parent?: { subscription_item_details?: { subscription?: string | null } };
+      }>;
+    };
   };
-  const subscriptionId = inv.subscription ?? null;
-  if (!subscriptionId) return; // not a subscription invoice
+
+  const line = inv.lines?.data?.[0];
+  const subscriptionId: string | null =
+    inv.subscription ??
+    inv.parent?.subscription_details?.subscription ??
+    line?.subscription ??
+    line?.parent?.subscription_item_details?.subscription ??
+    null;
 
   const supabase = adminClient();
+
+  // Idempotency: this invoice grants credits exactly once.
+  if (inv.id) {
+    const { data: dupe } = await supabase
+      .from("credit_grants")
+      .select("id")
+      .eq("stripe_invoice_id", inv.id)
+      .maybeSingle();
+    if (dupe) return;
+  }
+
   const customerId =
     typeof invoice.customer === "string" ? invoice.customer : (inv.customer ?? null);
-  const userId = await userByCustomer(supabase, customerId);
-  if (!userId) return;
 
-  const priceId = inv.lines?.data?.[0]?.price?.id ?? null;
-  const plan = (priceId && planForPriceId(priceId)) || null;
+  // Resolve plan + user as reliably as possible. The subscription's metadata
+  // (we set { user_id, plan } at creation) is the most trustworthy source.
+  let plan: string | null = null;
+  let userId: string | null = null;
+  if (subscriptionId) {
+    try {
+      const sub = await getStripe().subscriptions.retrieve(subscriptionId);
+      plan = (sub.metadata?.plan as string | undefined)?.toLowerCase() || subPlanSlug(sub);
+      userId = (sub.metadata?.user_id as string | undefined) ?? null;
+    } catch (e) {
+      console.warn("[stripe-webhook] could not retrieve subscription", e);
+    }
+  }
+  if (!plan) {
+    const priceId = line?.price?.id ?? line?.pricing?.price_details?.price ?? null;
+    plan = (priceId && planForPriceId(priceId)) || null;
+  }
+  if (!userId) userId = await userByCustomer(supabase, customerId);
+  if (!userId) {
+    console.warn("[stripe-webhook] invoice.paid: no user for customer", customerId);
+    return;
+  }
+  if (!plan) {
+    // Last resort: what the user signed up to during trial.
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("trial_target_plan,plan")
+      .eq("id", userId)
+      .maybeSingle();
+    plan =
+      ((prof as { trial_target_plan?: string } | null)?.trial_target_plan ??
+        (prof as { plan?: string } | null)?.plan ??
+        null);
+  }
+
   const amount = plan ? (PLAN_CREDIT_GRANT[plan] ?? 0) : 0;
+  const extra: Record<string, unknown> = {
+    subscription_status: "active",
+    trial_status: "converted",
+    monthly_credit_grant: amount,
+  };
+  if (subscriptionId) extra.stripe_subscription_id = subscriptionId;
 
   await grantCredits({
     userId,
     amount,
     kind: "subscription",
     stripeInvoiceId: inv.id ?? null,
-    note: plan ? `${plan} monthly credits` : "Subscription credits",
+    note: plan ? `${capitalize(plan)} subscription` : "Subscription credits",
     setPlan: plan ?? undefined,
-    extra: {
-      subscription_status: "active",
-      trial_status: "converted",
-      stripe_subscription_id: subscriptionId,
-      monthly_credit_grant: amount,
-    },
+    extra,
   });
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 async function handleSubscriptionChange(sub: Stripe.Subscription) {

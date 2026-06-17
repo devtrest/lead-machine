@@ -91,6 +91,7 @@ export async function POST(req: Request) {
       // Customer for later off-session use — without it we can't auto-charge.
       payment_intent_data: {
         setup_future_usage: "off_session",
+        description: `Lead Machine — Trial charge (${capitalize(targetPlan)})`,
         metadata: {
           user_id: user.id,
           is_trial: "true",

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import { getStripe, isStripeConfigured, TRIAL_PRICE_CENTS } from "@/lib/stripe";
 import { BillingDashboard, type Txn } from "@/components/billing/BillingDashboard";
 
 export const dynamic = "force-dynamic";
@@ -42,12 +42,25 @@ export default async function BillingPage() {
     try {
       const stripe = getStripe();
       const charges = await stripe.charges.list({ customer: customerId, limit: 24 });
-      transactions = charges.data.map((c) => ({
-        desc: c.description ?? "Charge",
-        date: new Date(c.created * 1000).toISOString(),
-        amountCents: c.amount,
-        status: c.status,
-      }));
+      const planName = ((p.plan as string) ?? "plan").replace(/^\w/, (c) => c.toUpperCase());
+      transactions = charges.data.map((c) => {
+        // Give every row a clear name: the $1 charge is the trial; generic
+        // Stripe "Subscription creation/update" lines become "{Plan} subscription";
+        // our own descriptions (top-ups, named subs) pass through.
+        let desc = (c.description ?? "").trim();
+        const lower = desc.toLowerCase();
+        if (c.amount === TRIAL_PRICE_CENTS) {
+          desc = "Trial charge";
+        } else if (!desc || lower.startsWith("subscription")) {
+          desc = `${planName} subscription`;
+        }
+        return {
+          desc,
+          date: new Date(c.created * 1000).toISOString(),
+          amountCents: c.amount,
+          status: c.status,
+        };
+      });
       lifetimeSpentCents = charges.data
         .filter((c) => c.paid && c.status === "succeeded")
         .reduce((a, c) => a + c.amount, 0);

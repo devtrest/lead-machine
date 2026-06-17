@@ -48,6 +48,9 @@ export async function POST(req: Request) {
       ],
       customer_email: user.email ?? undefined,
       client_reference_id: user.id,
+      payment_intent_data: {
+        description: `Lead Machine — ${pack.credits.toLocaleString()} credit top-up`,
+      },
       metadata: {
         user_id: user.id,
         is_topup: "true",
