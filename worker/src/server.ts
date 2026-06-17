@@ -51,8 +51,27 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, activeScrapes, maxScrapes: MAX_CONCURRENT_SCRAPES });
 });
+
+// Bound how many scrapes run at once on this instance so a burst of campaigns
+// (many users at once) can't exhaust memory / sockets / Places quota. Extra
+// requests queue — their SSE connection is held open by the heartbeat — until a
+// slot frees. To scale past one box, run multiple worker replicas behind the
+// same WORKER_URL (the DB is the shared source of truth) and/or raise this.
+const MAX_CONCURRENT_SCRAPES = Number(process.env.SCRAPE_CONCURRENCY) || 12;
+let activeScrapes = 0;
+const scrapeWaiters: Array<() => void> = [];
+async function acquireScrapeSlot(): Promise<void> {
+  if (activeScrapes >= MAX_CONCURRENT_SCRAPES) {
+    await new Promise<void>((resolve) => scrapeWaiters.push(resolve));
+  }
+  activeScrapes++;
+}
+function releaseScrapeSlot(): void {
+  activeScrapes = Math.max(0, activeScrapes - 1);
+  scrapeWaiters.shift()?.();
+}
 
 app.post("/scrape", requireAuth, async (req, res) => {
   const { scanRunId, userId, keyword, location, target } = (req.body ?? {}) as {
@@ -98,6 +117,9 @@ app.post("/scrape", requireAuth, async (req, res) => {
     }
   }, 15_000);
 
+  // Wait for a free slot (heartbeat keeps the stream alive while queued).
+  await acquireScrapeSlot();
+
   try {
     await runScrapeJob({
       scanRunId,
@@ -128,6 +150,7 @@ app.post("/scrape", requireAuth, async (req, res) => {
 
     send({ phase: "error", message });
   } finally {
+    releaseScrapeSlot();
     clearInterval(heartbeat);
     res.end();
   }

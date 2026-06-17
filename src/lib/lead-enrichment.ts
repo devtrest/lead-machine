@@ -200,24 +200,22 @@ async function guessEmailsForDomain(domain: string): Promise<string[]> {
   return GUESSED_LOCAL_PARTS.map((lp) => `${lp}@${domain}`);
 }
 
+// Ordered best-first; we only fetch the first few (MAX_FETCH_ATTEMPTS) and stop
+// as soon as we find an email. The homepage usually carries the email in a
+// footer / JSON-LD, so most leads resolve in a single fetch.
 const CONTACT_PATHS = [
   "",
   "/contact",
   "/contact-us",
-  "/contactus",
-  "/contact.html",
-  "/contact.php",
-  "/get-in-touch",
   "/about",
-  "/about-us",
-  "/about.html",
-  "/team",
+  "/get-in-touch",
   "/imprint",
-  "/legal/imprint",
-  "/reservations",
-  "/booking",
-  "/support",
 ];
+
+// Hard caps that keep a single lead's enrichment fast (the old code could fetch
+// 16 pages × 12s each on a site with no listed email).
+const MAX_FETCH_ATTEMPTS = 3;
+const FETCH_TIMEOUT_MS = 6_000;
 
 export async function enrichFromWebsite(
   websiteUrl: string,
@@ -241,11 +239,14 @@ export async function enrichFromWebsite(
   const phones: string[] = [];
   const sourceUrls: string[] = [];
   let sawSpaShell = false;
+  let attempts = 0;
 
   for (const target of candidates) {
+    if (attempts >= MAX_FETCH_ATTEMPTS) break;
+    attempts++;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12_000);
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
       const res = await fetch(target, {
         cache: "no-store",
@@ -307,8 +308,10 @@ export async function enrichFromWebsite(
       }
 
       // Stop early if we already have enough.
-      const realCount = unique(emails).filter(isLikelyRealEmail).length;
-      if (realCount >= maxItems && unique(phones).length >= maxItems) break;
+      // Stop as soon as we have at least one real email — that's the goal for
+      // a lead, and it keeps enrichment fast. (Phones mostly come from the
+      // Places API already.)
+      if (unique(emails).filter(isLikelyRealEmail).length >= 1) break;
     } catch {
       // Network errors / timeouts are expected on a fraction of sites.
     }

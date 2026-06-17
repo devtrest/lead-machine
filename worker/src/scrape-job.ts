@@ -124,6 +124,13 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
 
   if (leadsError) throw leadsError;
 
+  // Surface the lead count live (JobsList polls result_count) while the slower
+  // email-harvest phase runs — instead of jumping 0 → N only at the very end.
+  await supabase
+    .from("scan_runs")
+    .update({ result_count: results.length })
+    .eq("id", scanRunId);
+
   const contactRows: Array<{
     lead_id: string;
     phone: string | null;
@@ -153,7 +160,7 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
 
   if (harvestable.length > 0) {
     onEvent({ phase: "harvesting", count: 0, target: harvestable.length });
-    const HARVEST_CONCURRENCY = 5;
+    const HARVEST_CONCURRENCY = 10;
     let cursor = 0;
     let done = 0;
     await Promise.all(

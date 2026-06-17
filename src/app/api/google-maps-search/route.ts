@@ -397,6 +397,13 @@ async function runEmbeddedScrape(opts: {
 
         if (leadsError) throw leadsError;
 
+        // Surface the lead count live while the slower harvest runs.
+        await supabase
+          .from("scan_runs")
+          .update({ result_count: results.length })
+          .eq("id", scanRunId)
+          .eq("user_id", userId);
+
         const contactRows: {
           lead_id: string;
           phone: string | null;
@@ -428,7 +435,7 @@ async function runEmbeddedScrape(opts: {
             count: 0,
             target: harvestable.length,
           });
-          const HARVEST_CONCURRENCY = 5;
+          const HARVEST_CONCURRENCY = 10;
           let cursor = 0;
           let done = 0;
           await Promise.all(
