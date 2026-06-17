@@ -5,7 +5,7 @@ import {
   type ProgressEvent as ScraperEvent,
 } from "./scraper.js";
 import { enrichFromWebsite } from "./enrichment.js";
-import { expandKeyword } from "./keywords.js";
+import { expandKeyword, expandLocation } from "./keywords.js";
 
 export type JobEvent =
   | ScraperEvent
@@ -31,53 +31,68 @@ export type JobInput = {
 export async function runScrapeJob(input: JobInput): Promise<number> {
   const { scanRunId, userId, keyword, location, target, onEvent } = input;
 
-  // First sweep
-  let results = await scrapeGoogleMaps({
-    keyword,
-    location,
-    maxResults: target,
-    onProgress: (e) => onEvent(e),
-  });
+  // Build a query grid. Places Text Search caps at ~60 results per query, so
+  // to reach large targets we vary the LOCATION (geographic spread — the
+  // biggest source of new, non-overlapping leads) and the KEYWORD (related
+  // niches), dedup, and keep querying until we hit the target.
+  const seen = new Set<string>();
+  const collected: MapsPlace[] = [];
+  const keyOf = (r: MapsPlace) =>
+    `${r.title.toLowerCase()}|${(r.placeUrl ?? r.websiteUrl ?? "").toLowerCase()}`;
 
-  // Keyword expansion when underfilled
-  if (results.length < target) {
-    const expanded = await expandKeyword(keyword, 6);
-    const seen = new Set(
-      results.map(
-        (r) => `${r.title.toLowerCase()}|${(r.placeUrl ?? "").toLowerCase()}`
-      )
-    );
-    for (const altKeyword of expanded) {
-      if (results.length >= target) break;
-      const needed = target - results.length;
-      const extra = await scrapeGoogleMaps({
-        keyword: altKeyword,
-        location,
-        maxResults: Math.min(needed * 2, target),
-        onProgress: (e) => {
-          if (
-            e.phase === "discovering" ||
-            e.phase === "extracting" ||
-            e.phase === "enriching"
-          ) {
-            onEvent({
-              phase: e.phase,
-              count: Math.min(target, results.length + e.count),
-              target,
-            });
-          }
-        },
-      });
-      for (const r of extra) {
-        const key = `${r.title.toLowerCase()}|${(r.placeUrl ?? "").toLowerCase()}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        results.push(r);
-        if (results.length >= target) break;
+  const reportProgress = async () => {
+    const n = Math.min(target, collected.length);
+    onEvent({ phase: "discovering", count: n, target });
+    // Live count in the campaign card while discovery runs.
+    await supabase
+      .from("scan_runs")
+      .update({ result_count: n })
+      .eq("id", scanRunId)
+      .then(
+        () => {},
+        () => {}
+      );
+  };
+
+  const runQuery = async (kw: string, loc: string) => {
+    if (collected.length >= target) return;
+    const found = await scrapeGoogleMaps({
+      keyword: kw,
+      location: loc,
+      maxResults: 60,
+      onProgress: () => {},
+    });
+    for (const r of found) {
+      if (collected.length >= target) break;
+      const k = keyOf(r);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      collected.push(r);
+    }
+    await reportProgress();
+  };
+
+  const locations = [location, ...expandLocation(location)];
+
+  // Pass 1 — base keyword across every location variant.
+  for (const loc of locations) {
+    if (collected.length >= target) break;
+    await runQuery(keyword, loc);
+  }
+
+  // Pass 2 — related keywords across the same locations, until the target.
+  if (collected.length < target) {
+    const altKeywords = await expandKeyword(keyword, 14);
+    for (const kw of altKeywords) {
+      if (collected.length >= target) break;
+      for (const loc of locations) {
+        if (collected.length >= target) break;
+        await runQuery(kw, loc);
       }
     }
-    results = results.slice(0, target);
   }
+
+  const results = collected.slice(0, target);
 
   onEvent({ phase: "saving" });
 

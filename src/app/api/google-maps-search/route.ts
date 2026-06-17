@@ -4,7 +4,7 @@ import {
   type ProgressEvent,
 } from "@/lib/google-maps-scraper";
 import { enrichFromWebsite } from "@/lib/lead-enrichment";
-import { expandKeyword } from "@/lib/keyword-cluster";
+import { expandKeyword, expandLocation } from "@/lib/keyword-cluster";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -294,51 +294,62 @@ async function runEmbeddedScrape(opts: {
       };
 
       try {
-        let results = await scrapeGoogleMaps({
-          keyword,
-          location,
-          maxResults: limit,
-          onProgress: (e) => send(e),
-        });
+        // Query grid: vary location (geographic) + keyword to beat the ~60/
+        // query Places cap and actually reach the target. Mirrors the worker.
+        type Place = Awaited<ReturnType<typeof scrapeGoogleMaps>>[number];
+        const seen = new Set<string>();
+        const collected: Place[] = [];
+        const keyOf = (r: Place) =>
+          `${r.title.toLowerCase()}|${(r.placeUrl ?? r.websiteUrl ?? "").toLowerCase()}`;
 
-        if (results.length < limit) {
-          const expanded = await expandKeyword(keyword, 6);
-          const seen = new Set(
-            results.map(
-              (r) => `${r.title.toLowerCase()}|${(r.placeUrl ?? "").toLowerCase()}`
-            )
-          );
-          for (const altKeyword of expanded) {
-            if (results.length >= limit) break;
-            const needed = limit - results.length;
-            const extra = await scrapeGoogleMaps({
-              keyword: altKeyword,
-              location,
-              maxResults: Math.min(needed * 2, limit),
-              onProgress: (e) => {
-                if (
-                  e.phase === "discovering" ||
-                  e.phase === "extracting" ||
-                  e.phase === "enriching"
-                ) {
-                  send({
-                    phase: e.phase,
-                    count: Math.min(limit, results.length + e.count),
-                    target: limit,
-                  });
-                }
-              },
-            });
-            for (const r of extra) {
-              const key = `${r.title.toLowerCase()}|${(r.placeUrl ?? "").toLowerCase()}`;
-              if (seen.has(key)) continue;
-              seen.add(key);
-              results.push(r);
-              if (results.length >= limit) break;
+        const reportProgress = async () => {
+          const n = Math.min(limit, collected.length);
+          send({ phase: "discovering", count: n, target: limit });
+          await supabase
+            .from("scan_runs")
+            .update({ result_count: n })
+            .eq("id", scanRunId)
+            .eq("user_id", userId)
+            .then(
+              () => {},
+              () => {}
+            );
+        };
+
+        const runQuery = async (kw: string, loc: string) => {
+          if (collected.length >= limit) return;
+          const found = await scrapeGoogleMaps({
+            keyword: kw,
+            location: loc,
+            maxResults: 60,
+            onProgress: () => {},
+          });
+          for (const r of found) {
+            if (collected.length >= limit) break;
+            const k = keyOf(r);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            collected.push(r);
+          }
+          await reportProgress();
+        };
+
+        const locations = [location, ...expandLocation(location)];
+        for (const loc of locations) {
+          if (collected.length >= limit) break;
+          await runQuery(keyword, loc);
+        }
+        if (collected.length < limit) {
+          const altKeywords = await expandKeyword(keyword, 14);
+          for (const kw of altKeywords) {
+            if (collected.length >= limit) break;
+            for (const loc of locations) {
+              if (collected.length >= limit) break;
+              await runQuery(kw, loc);
             }
           }
-          results = results.slice(0, limit);
         }
+        const results = collected.slice(0, limit);
 
         send({ phase: "saving" });
 

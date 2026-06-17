@@ -148,6 +148,84 @@ async function tryMistral(keyword: string, max: number): Promise<string[]> {
   }
 }
 
+// Google Places Text Search caps at ~60 results per query and a broad query
+// ("X united states") just returns the top 60 nationally. To reach large
+// targets we re-run the search across many cities of the requested country —
+// geographic spread yields mostly NEW (non-overlapping) businesses. Only used
+// when the location is (essentially) a whole country.
+const COUNTRY_CITIES: Record<string, string[]> = {
+  "united states": [
+    "New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia",
+    "San Antonio", "San Diego", "Dallas", "Austin", "San Jose", "Jacksonville",
+    "Columbus", "Charlotte", "Indianapolis", "San Francisco", "Seattle",
+    "Denver", "Boston", "Nashville", "Las Vegas", "Atlanta", "Miami",
+    "Minneapolis", "Portland", "Detroit", "Tampa", "Orlando", "Sacramento",
+    "Kansas City", "St. Louis", "Pittsburgh", "Cincinnati", "Cleveland",
+  ],
+  canada: [
+    "Toronto", "Montreal", "Vancouver", "Calgary", "Edmonton", "Ottawa",
+    "Winnipeg", "Quebec City", "Hamilton", "Kitchener", "London", "Victoria",
+    "Halifax", "Mississauga", "Brampton", "Surrey",
+  ],
+  "united kingdom": [
+    "London", "Birmingham", "Manchester", "Glasgow", "Liverpool", "Leeds",
+    "Sheffield", "Edinburgh", "Bristol", "Cardiff", "Leicester", "Coventry",
+    "Nottingham", "Newcastle", "Brighton", "Belfast",
+  ],
+  australia: [
+    "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Gold Coast",
+    "Canberra", "Newcastle", "Wollongong", "Hobart", "Geelong", "Townsville",
+  ],
+  india: [
+    "Mumbai", "Delhi", "Bengaluru", "Hyderabad", "Chennai", "Kolkata", "Pune",
+    "Ahmedabad", "Jaipur", "Surat", "Lucknow", "Kanpur", "Nagpur", "Indore",
+    "Chandigarh", "Coimbatore",
+  ],
+  pakistan: [
+    "Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad", "Multan",
+    "Peshawar", "Quetta", "Sialkot", "Gujranwala", "Hyderabad", "Bahawalpur",
+  ],
+  "united arab emirates": [
+    "Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah",
+  ],
+  germany: [
+    "Berlin", "Munich", "Hamburg", "Cologne", "Frankfurt", "Stuttgart",
+    "Dusseldorf", "Dortmund", "Essen", "Leipzig", "Bremen", "Hanover",
+  ],
+  france: [
+    "Paris", "Marseille", "Lyon", "Toulouse", "Nice", "Nantes", "Strasbourg",
+    "Montpellier", "Bordeaux", "Lille", "Rennes", "Toulon",
+  ],
+};
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "united states",
+  us: "united states",
+  "u.s.": "united states",
+  "u.s.a.": "united states",
+  america: "united states",
+  "united states of america": "united states",
+  uk: "united kingdom",
+  "u.k.": "united kingdom",
+  britain: "united kingdom",
+  "great britain": "united kingdom",
+  england: "united kingdom",
+  uae: "united arab emirates",
+};
+
+/**
+ * If the location is essentially a whole country, return that country's major
+ * cities (as "City, Country") to spread the search geographically. For a
+ * specific city/state we return [] and rely on keyword variation instead.
+ */
+export function expandLocation(location: string): string[] {
+  const norm = location.toLowerCase().trim().replace(/[.\s]+$/, "");
+  const canonical = COUNTRY_ALIASES[norm] ?? norm;
+  const cities = COUNTRY_CITIES[canonical];
+  if (!cities) return [];
+  return cities.map((c) => `${c}, ${canonical}`);
+}
+
 export async function expandKeyword(
   keyword: string,
   max = 6
