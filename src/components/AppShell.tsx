@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -113,6 +113,33 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Keep the credit balance live without a manual refresh. Adopt the server
+  // value on navigation/refresh, poll every few seconds, and update instantly
+  // when something charges/grants credits (dispatches "leadmachine:credits").
+  const [liveCredits, setLiveCredits] = useState(credits);
+  useEffect(() => setLiveCredits(credits), [credits]);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/credits", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { credits?: number };
+        if (alive && typeof json.credits === "number") setLiveCredits(json.credits);
+      } catch {
+        /* network blip — retry next tick */
+      }
+    };
+    const onEvent = () => load();
+    window.addEventListener("leadmachine:credits", onEvent);
+    const timer = setInterval(load, 6000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("leadmachine:credits", onEvent);
+    };
+  }, []);
+
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -148,7 +175,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
             sections={visibleSections}
             pathname={pathname}
             email={email}
-            credits={credits}
+            credits={liveCredits}
             plan={plan}
             onSignOut={signOut}
           />
@@ -176,7 +203,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                   sections={visibleSections}
                   pathname={pathname}
                   email={email}
-                  credits={credits}
+                  credits={liveCredits}
                   plan={plan}
                   onSignOut={signOut}
                   onNavClick={() => setMobileOpen(false)}
@@ -224,7 +251,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
                   aria-hidden
                   className="h-4 w-4"
                 />
-                {credits.toLocaleString()} credits
+                {liveCredits.toLocaleString()} credits
               </Link>
 
               <div className="relative">

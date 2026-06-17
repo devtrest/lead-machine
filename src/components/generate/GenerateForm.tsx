@@ -225,7 +225,14 @@ export function GenerateForm() {
       // background and shows live in the Lead campaigns list below. Keep the
       // stream draining (without blocking the UI) so the server finishes and
       // refunds unused credits, then refresh the list totals when it's done.
-      void drainStream(res, () => router.refresh());
+      void drainStream(res, () => {
+        router.refresh();
+        // Unused credits were just refunded — update the live balance.
+        window.dispatchEvent(new Event("leadmachine:credits"));
+      });
+
+      // Credits were reserved up front — reflect the charge in the topbar now.
+      window.dispatchEvent(new Event("leadmachine:credits"));
 
       toast.success(
         "Campaign started",
