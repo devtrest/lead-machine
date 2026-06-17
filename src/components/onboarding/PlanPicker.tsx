@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Check, Loader2, Sparkles, Building2 } from "lucide-react";
 
 type Plan = {
-  id: "starter" | "growth" | "pro";
+  id: "starter" | "premium" | "pro";
   name: string;
   price: string;
   credits: number;
@@ -24,9 +24,9 @@ const PLANS: Plan[] = [
     perks: ["3,000 credits / mo (roll over)", "All engines", "CSV + Excel export"],
   },
   {
-    id: "growth",
-    name: "Growth",
-    price: "$99",
+    id: "premium",
+    name: "Premium",
+    price: "$149",
     credits: 15_000,
     blurb: "For weekly outbound",
     perks: [
@@ -39,12 +39,12 @@ const PLANS: Plan[] = [
   {
     id: "pro",
     name: "Pro",
-    price: "$149",
+    price: "$499",
     credits: 100_000,
     blurb: "For teams & power users",
     perks: [
       "100,000 credits / mo (roll over)",
-      "Everything in Growth",
+      "Everything in Premium",
       "Priority extraction queue",
     ],
   },

@@ -12,9 +12,8 @@ import { supabase } from "./db.js";
 // npm package so it can't import the frontend lib directly.
 const PLAN_PRICE_CENTS: Record<string, number> = {
   starter: 4_900,
-  growth: 9_900,
-  premium: 9_900,
-  pro: 14_900,
+  premium: 14_900,
+  pro: 49_900,
 };
 
 type TrialRow = {

@@ -61,9 +61,9 @@ const PLANS: PlanCard[] = [
     perks: ["3,000 credits / mo (roll over)", "All engines", "CSV + Excel export"],
   },
   {
-    id: "growth",
-    name: "Growth",
-    price: "$99",
+    id: "premium",
+    name: "Premium",
+    price: "$149",
     credits: 15_000,
     blurb: "For weekly outbound",
     perks: ["15,000 credits / mo", "Email + phone enrichment", "Unibox + reply detection"],
@@ -72,10 +72,10 @@ const PLANS: PlanCard[] = [
   {
     id: "pro",
     name: "Pro",
-    price: "$149",
+    price: "$499",
     credits: 100_000,
     blurb: "For teams & power users",
-    perks: ["100,000 credits / mo", "Everything in Growth", "Priority extraction queue"],
+    perks: ["100,000 credits / mo", "Everything in Premium", "Priority extraction queue"],
   },
   {
     id: "enterprise",

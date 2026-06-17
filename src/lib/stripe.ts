@@ -17,19 +17,16 @@ export function getStripe(): Stripe {
   return cached;
 }
 
-/** The paid subscription tiers (monthly). `premium` is kept only for
- *  backward-compat with old rows; the live tiers are starter/growth/pro. */
-export const PAID_PLANS = ["starter", "growth", "pro"] as const;
+/** The paid subscription tiers (monthly) — the original/canonical lineup. */
+export const PAID_PLANS = ["starter", "premium", "pro"] as const;
 export type PaidPlan = (typeof PAID_PLANS)[number];
 
 /** Map our plan slugs to Stripe RECURRING (monthly) Price IDs (set via env).
  *  These MUST be recurring/month prices in your Stripe dashboard. */
 export const PLAN_TO_STRIPE_PRICE: Record<string, string | undefined> = {
   starter: process.env.STRIPE_PRICE_STARTER,
-  growth: process.env.STRIPE_PRICE_GROWTH,
+  premium: process.env.STRIPE_PRICE_PREMIUM,
   pro: process.env.STRIPE_PRICE_PRO,
-  // legacy alias so old env still resolves
-  premium: process.env.STRIPE_PRICE_PREMIUM ?? process.env.STRIPE_PRICE_GROWTH,
 };
 
 /** Reverse lookup — given a Stripe Price ID from a webhook, find our plan slug. */
@@ -45,8 +42,7 @@ export function planForPriceId(priceId: string): string | null {
  *  1 credit = 1 scraped lead OR 1 initial outreach email (follow-ups free). */
 export const PLAN_CREDIT_GRANT: Record<string, number> = {
   starter: 3_000,
-  growth: 15_000,
-  premium: 15_000, // legacy alias
+  premium: 15_000,
   pro: 100_000,
   enterprise: 0, // unmetered
 };
@@ -54,25 +50,21 @@ export const PLAN_CREDIT_GRANT: Record<string, number> = {
 /** Display price per plan (monthly). */
 export const PLAN_PRICE_USD: Record<string, string> = {
   starter: "$49",
-  growth: "$99",
-  premium: "$99",
-  pro: "$149",
+  premium: "$149",
+  pro: "$499",
   enterprise: "Custom",
 };
 
 /** Monthly plan price in CENTS. */
 export const PLAN_PRICE_CENTS: Record<string, number> = {
   starter: 4_900,
-  growth: 9_900,
-  premium: 9_900,
-  pro: 14_900,
+  premium: 14_900,
+  pro: 49_900,
 };
 
-/** Approx. standard videos / leads framing for marketing copy. */
 export const PLAN_LABEL: Record<string, string> = {
   starter: "Starter",
-  growth: "Growth",
-  premium: "Growth",
+  premium: "Premium",
   pro: "Pro",
   enterprise: "Enterprise",
 };
