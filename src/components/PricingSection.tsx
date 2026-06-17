@@ -240,7 +240,7 @@ export function PricingSection({ signedIn, hideHeader }: Props) {
                   {busy === tier.id ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : null}
-                  {busy === tier.id ? "Redirecting…" : "Start for $1"}
+                  Start for $1
                 </button>
               ) : (
                 <Link

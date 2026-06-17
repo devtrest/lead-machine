@@ -182,6 +182,15 @@ export function BillingDashboard(props: Props) {
       const { url } = await post("/api/billing/topup", { packId });
       if (url) window.location.href = url;
     });
+  const switchPlan = (planId: string) =>
+    run(`plan-${planId}`, async () => {
+      await post("/api/billing/switch", { plan: planId });
+      toast.success(
+        "Plan switched",
+        `You're now on ${planId.charAt(0).toUpperCase() + planId.slice(1)} — applies to your next charge.`
+      );
+      router.refresh();
+    });
 
   const filteredTxns = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -216,7 +225,7 @@ export function BillingDashboard(props: Props) {
           <button
             type="button"
             onClick={openPortal}
-            disabled={busy !== null}
+            disabled={busy === "portal"}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--ink-strong)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {busy === "portal" ? (
@@ -286,7 +295,7 @@ export function BillingDashboard(props: Props) {
               <button
                 type="button"
                 onClick={openPortal}
-                disabled={busy !== null}
+                disabled={busy === "portal"}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur transition hover:bg-white/25 disabled:opacity-50"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
@@ -324,7 +333,7 @@ export function BillingDashboard(props: Props) {
               <button
                 type="button"
                 onClick={activateNow}
-                disabled={busy !== null}
+                disabled={busy === "activate"}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-[var(--brand-700)] transition hover:bg-white/90 disabled:opacity-50"
               >
                 {busy === "activate" ? (
@@ -362,7 +371,7 @@ export function BillingDashboard(props: Props) {
           <button
             type="button"
             onClick={openPortal}
-            disabled={busy !== null || !hasSub}
+            disabled={busy === "portal" || !hasSub}
             className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] py-2.5 text-sm font-medium text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)] disabled:opacity-50"
           >
             <CreditCard className="h-4 w-4" />
@@ -433,9 +442,9 @@ export function BillingDashboard(props: Props) {
                   isCurrent={isCurrent}
                   hasSub={hasSub}
                   busy={busy === `plan-${plan.id}`}
-                  disabled={busy !== null}
+                  disabled={busy === `plan-${plan.id}`}
                   label={plan.name}
-                  onPortal={openPortal}
+                  onSwitch={() => switchPlan(plan.id)}
                   onTrial={() => startTrial(plan.id)}
                 />
               </div>
@@ -478,7 +487,7 @@ export function BillingDashboard(props: Props) {
               <button
                 type="button"
                 onClick={() => topup(pack.id)}
-                disabled={busy !== null}
+                disabled={busy === `topup-${pack.id}`}
                 className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--ink-strong)] py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
               >
                 {busy === `topup-${pack.id}` ? (
@@ -621,7 +630,7 @@ function PlanButton({
   busy,
   disabled,
   label,
-  onPortal,
+  onSwitch,
   onTrial,
 }: {
   enterprise: boolean;
@@ -630,7 +639,7 @@ function PlanButton({
   busy: boolean;
   disabled: boolean;
   label: string;
-  onPortal: () => void;
+  onSwitch: () => void;
   onTrial: () => void;
 }) {
   if (enterprise) {
@@ -653,7 +662,7 @@ function PlanButton({
   return (
     <button
       type="button"
-      onClick={hasSub ? onPortal : onTrial}
+      onClick={hasSub ? onSwitch : onTrial}
       disabled={disabled}
       className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--ink-strong)] py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
     >

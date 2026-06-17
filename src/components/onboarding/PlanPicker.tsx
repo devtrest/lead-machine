@@ -153,7 +153,7 @@ export function PlanPicker() {
               ) : (
                 <Sparkles className="h-3.5 w-3.5" />
               )}
-              {busy === plan.id ? "Redirecting…" : "Start for $1"}
+              Start for $1
             </button>
           </motion.div>
         ))}
