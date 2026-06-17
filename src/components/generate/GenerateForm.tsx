@@ -178,6 +178,7 @@ export function GenerateForm() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    const requested = target;
 
     try {
       const res = await fetch("/api/google-maps-search", {
@@ -187,7 +188,7 @@ export function GenerateForm() {
         signal: controller.signal,
       });
 
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         // Surface errors (out of credits, missing profile, etc.) without
         // navigating away.
         const text = await res.text().catch(() => "");
@@ -202,12 +203,81 @@ export function GenerateForm() {
         return;
       }
 
-      // Worker accepted the job. Redirect to Scraping campaigns where the
-      // run is showing live. The fetch is left in flight intentionally —
-      // the component unmounts on navigation, which closes the connection
-      // naturally. The worker continues regardless.
-      router.refresh();
-      router.push("/user/jobs");
+      // Consume the SSE stream so the live progress bar fills as the campaign
+      // runs (phases + counts), then land on the done state.
+      type Incoming = {
+        phase?: string;
+        count?: number;
+        target?: number;
+        runId?: string;
+        total?: number;
+        message?: string;
+      };
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let terminal = false;
+      let lastCount = 0;
+
+      const handle = (ev: Incoming) => {
+        if (!ev.phase) return;
+        if (ev.phase === "saved") {
+          terminal = true;
+          setStage({
+            kind: "done",
+            runId: ev.runId,
+            total: typeof ev.total === "number" ? ev.total : lastCount,
+            requested,
+          });
+          router.refresh();
+        } else if (ev.phase === "error") {
+          terminal = true;
+          setStage({ kind: "error", message: ev.message ?? "The lead engine hit an error." });
+        } else if (ev.phase === "saving") {
+          setStage((prev) =>
+            prev.kind === "running"
+              ? { ...prev, phase: "saving" }
+              : { kind: "running", phase: "saving", count: lastCount, target: requested }
+          );
+        } else {
+          const count = typeof ev.count === "number" ? ev.count : lastCount;
+          lastCount = count;
+          setStage({
+            kind: "running",
+            phase: ev.phase as Phase,
+            count,
+            target: typeof ev.target === "number" ? ev.target : requested,
+          });
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const dataLine = chunk
+            .split("\n")
+            .find((l) => l.startsWith("data:"));
+          if (!dataLine) continue;
+          const payload = dataLine.replace(/^data:\s*/, "").trim();
+          if (!payload) continue;
+          try {
+            handle(JSON.parse(payload) as Incoming);
+          } catch {
+            /* ignore malformed keep-alive lines */
+          }
+        }
+      }
+
+      if (!terminal) {
+        // Stream ended without a final event — surface what we have + refresh
+        // so the campaign list/stats update.
+        setStage({ kind: "done", total: lastCount, requested });
+        router.refresh();
+      }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setStage({
