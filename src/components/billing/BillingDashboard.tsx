@@ -172,11 +172,6 @@ export function BillingDashboard(props: Props) {
       }
       router.refresh();
     });
-  const setCancel = (resume: boolean) =>
-    run("cancel", async () => {
-      await post("/api/billing/cancel", { resume });
-      router.refresh();
-    });
   const startTrial = (planId: string) =>
     run(`plan-${planId}`, async () => {
       const { url } = await post("/api/billing/trial", { targetPlan: planId });
@@ -324,8 +319,8 @@ export function BillingDashboard(props: Props) {
             />
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-2">
-            {isTrialing ? (
+          {isTrialing ? (
+            <div className="mt-6 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={activateNow}
@@ -339,32 +334,8 @@ export function BillingDashboard(props: Props) {
                 )}
                 Activate now
               </button>
-            ) : null}
-            {hasSub ? (
-              props.cancelAtPeriodEnd ? (
-                <button
-                  type="button"
-                  onClick={() => setCancel(true)}
-                  disabled={busy !== null}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 px-4 py-2.5 text-sm font-semibold backdrop-blur transition hover:bg-white/25 disabled:opacity-50"
-                >
-                  Resume subscription
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setCancel(false)}
-                  disabled={busy !== null}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2.5 text-sm font-medium text-white/90 backdrop-blur transition hover:bg-white/20 disabled:opacity-50"
-                >
-                  {busy === "cancel" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : null}
-                  Cancel
-                </button>
-              )
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Payment method */}
