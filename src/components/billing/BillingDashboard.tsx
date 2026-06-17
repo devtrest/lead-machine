@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/Toast";
 import {
   Sparkles,
   Loader2,
@@ -111,6 +112,7 @@ function fmtDate(iso: string | null): string {
 
 export function BillingDashboard(props: Props) {
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -128,7 +130,13 @@ export function BillingDashboard(props: Props) {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error ?? "Something went wrong");
-    return json as { url?: string; ok?: boolean };
+    return json as {
+      url?: string;
+      ok?: boolean;
+      granted?: boolean;
+      creditsAdded?: number;
+      pending?: boolean;
+    };
   }
 
   async function run(key: string, fn: () => Promise<void>) {
@@ -150,7 +158,18 @@ export function BillingDashboard(props: Props) {
     });
   const activateNow = () =>
     run("activate", async () => {
-      await post("/api/billing/activate");
+      const res = await post("/api/billing/activate");
+      if (res.granted) {
+        toast.success(
+          "Plan activated",
+          `${(res.creditsAdded ?? 0).toLocaleString()} credits added to your balance.`
+        );
+      } else {
+        toast.success(
+          "Plan activated",
+          "Your credits are on the way — they'll appear in a moment."
+        );
+      }
       router.refresh();
     });
   const setCancel = (resume: boolean) =>
