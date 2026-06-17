@@ -1,5 +1,3 @@
-import dnsPromises from "node:dns/promises";
-
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const PHONE_RE = /(?:\+\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)\d{3,4}[\s-]?\d{3,4}/g;
 
@@ -17,31 +15,6 @@ const SPAM_EMAIL_PATTERNS = [
   /@wixpress\.com$/i,
   /@cloudfront\.net$/i,
   /\.(png|jpe?g|gif|webp|svg|css|js|woff2?|ttf|ico)$/i,
-];
-
-// Sites built on a generic SaaS-ish stack (Wix, Squarespace, Shopify pages,
-// Next.js apps with empty SSR) often serve a near-empty shell on first GET.
-// We try to detect this so we can fall back to MX-validated pattern guessing.
-const SPA_MARKERS = [
-  /id\s*=\s*["']__next["']/i,
-  /id\s*=\s*["']root["']/i,
-  /id\s*=\s*["']app["']/i,
-  /id\s*=\s*["']gatsby/i,
-  /<meta\s+name\s*=\s*["']next-head/i,
-  /<noscript>.{0,200}?(JavaScript|enable|disabled)/i,
-];
-
-// Patterns we'll try with MX-validation when the crawl returns zero emails.
-// Ordered by likelihood for small businesses worldwide.
-const GUESSED_LOCAL_PARTS = [
-  "info",
-  "contact",
-  "support",
-  "hello",
-  "admin",
-  "sales",
-  "reservations",
-  "bookings",
 ];
 
 type EnrichedContact = {
@@ -165,49 +138,11 @@ function walkJsonLd(node: unknown, emails: string[], phones: string[]): void {
   for (const key of Object.keys(obj)) walkJsonLd(obj[key], emails, phones);
 }
 
-// Resolve MX records for a domain. Lookup is cached per process and short-
-// circuited with a 3s timeout so a slow DNS resolver can't block the batch.
-const mxCache = new Map<string, boolean>();
-async function hasMxRecord(domain: string): Promise<boolean> {
-  if (mxCache.has(domain)) return mxCache.get(domain)!;
-  try {
-    const timer = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("DNS timeout")), 3000)
-    );
-    const lookup = dnsPromises.resolveMx(domain).then((records) => records.length > 0);
-    const result = await Promise.race([lookup, timer]);
-    mxCache.set(domain, result);
-    return result;
-  } catch {
-    mxCache.set(domain, false);
-    return false;
-  }
-}
-
-// Last-resort fallback: when scraping yields zero emails, guess common local
-// parts against the lead's domain. Each guess is validated by checking the
-// domain has MX records (i.e. it accepts mail at all). We don't try to verify
-// the specific local part — that requires SMTP RCPT TO probing which is
-// noisy and gets us blacklisted.
-//
-// Caveat: a domain having MX records doesn't prove "info@example.com" is a
-// real mailbox — it just proves the domain accepts mail. False positives are
-// possible. The caller can flag these as lower confidence if needed.
-async function guessEmailsForDomain(domain: string): Promise<string[]> {
-  if (!domain) return [];
-  if (!(await hasMxRecord(domain))) return [];
-  return GUESSED_LOCAL_PARTS.map((lp) => `${lp}@${domain}`);
-}
-
-// Restaurant/business sites often have /reservations, /menu, etc. The wider
-// the path list, the higher the chance of hitting a static page where the
-// email appears in HTML.
-// Email lives in the homepage footer or on the contact/about page. We check
-// the homepage first (footer/JSON-LD), then the common contact-page variants,
-// and stop the moment we find a real email — so the typical site is 1–2
-// fetches, but we still reliably reach the contact page when the footer has
-// nothing (and don't fall back to guessed addresses prematurely).
-const CONTACT_PATHS = ["", "/contact", "/contact-us", "/about", "/contact.html"];
+// Email lives in the homepage footer or on the contact page. We check the
+// homepage first (footer / JSON-LD), then the contact-page variants, and stop
+// the moment we find a real email. If none is found, the lead gets NO email —
+// we never guess.
+const CONTACT_PATHS = ["", "/contact", "/contacts", "/contact-us"];
 
 // Cap fetches so a no-email site can't crawl forever, but high enough to reach
 // the contact page even if a path 404s.
@@ -235,7 +170,6 @@ export async function enrichFromWebsite(
   const emails: string[] = [];
   const phones: string[] = [];
   const sourceUrls: string[] = [];
-  let sawSpaShell = false;
   let attempts = 0;
 
   for (const target of candidates) {
@@ -262,14 +196,6 @@ export async function enrichFromWebsite(
       clearTimeout(timeoutId);
       if (!res.ok) continue;
       const html = await res.text();
-
-      // Detect SPA shells so we can fall back to pattern guessing later.
-      if (
-        html.length < 12_000 &&
-        SPA_MARKERS.some((m) => m.test(html))
-      ) {
-        sawSpaShell = true;
-      }
 
       // 1. mailto: / tel: hrefs — highest signal.
       const fromHrefs = extractFromHrefs(html);
@@ -314,17 +240,8 @@ export async function enrichFromWebsite(
     }
   }
 
-  // 5. Last-resort fallback: if we found nothing AND the domain accepts mail,
-  // guess common local parts. Either the scrape failed entirely (SPA shell,
-  // anti-bot, network) or the site just doesn't list an email publicly.
-  if (
-    unique(emails).filter(isLikelyRealEmail).length === 0 &&
-    (sawSpaShell || sourceUrls.length === 0)
-  ) {
-    const guessed = await guessEmailsForDomain(base.hostname.replace(/^www\./, ""));
-    for (const e of guessed) emails.push(e);
-  }
-
+  // No guessing: if no real email was found on the site, the lead simply has
+  // no email.
   return {
     emails: unique(emails).filter(isLikelyRealEmail).slice(0, maxItems),
     phones: unique(phones).slice(0, maxItems),
