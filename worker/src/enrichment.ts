@@ -202,15 +202,17 @@ async function guessEmailsForDomain(domain: string): Promise<string[]> {
 // Restaurant/business sites often have /reservations, /menu, etc. The wider
 // the path list, the higher the chance of hitting a static page where the
 // email appears in HTML.
-// Almost every site lists its email in the homepage footer or on the contact
-// page — so we only check the homepage, then the contact page, and stop on the
-// first email. No deep crawling.
-const CONTACT_PATHS = ["", "/contact", "/contact-us"];
+// Email lives in the homepage footer or on the contact/about page. We check
+// the homepage first (footer/JSON-LD), then the common contact-page variants,
+// and stop the moment we find a real email — so the typical site is 1–2
+// fetches, but we still reliably reach the contact page when the footer has
+// nothing (and don't fall back to guessed addresses prematurely).
+const CONTACT_PATHS = ["", "/contact", "/contact-us", "/about", "/contact.html"];
 
-// Hard caps that keep a single lead's enrichment fast: at most the homepage +
-// contact page.
-const MAX_FETCH_ATTEMPTS = 2;
-const FETCH_TIMEOUT_MS = 6_000;
+// Cap fetches so a no-email site can't crawl forever, but high enough to reach
+// the contact page even if a path 404s.
+const MAX_FETCH_ATTEMPTS = 4;
+const FETCH_TIMEOUT_MS = 7_000;
 
 export async function enrichFromWebsite(
   websiteUrl: string,
