@@ -182,11 +182,14 @@ const MAX_FETCH_ATTEMPTS = 5;
 const FETCH_TIMEOUT_MS = 4_000;
 
 // Hard cap on the HTML body we'll keep per fetch. Some Shopify/Squarespace
-// pages serve 2-5 MB of inline JSON, CSS, and tracker scripts; the regex
-// passes over that take seconds and rarely surface anything new (the email
-// is almost always in the first 500 KB which is where the footer + header
-// live in the DOM order). Truncating prevents the event loop from blocking.
-const MAX_HTML_BYTES = 800_000;
+// pages serve 2-5 MB of inline JSON, CSS, and tracker scripts. EVERY
+// regex extractor below runs on the full string; 800 KB × 6 extractors ×
+// 20 concurrent workers was burying the Node event loop in CPU work,
+// which delayed the per-lead Promise.race timeout from firing on time
+// (Promise.race CAN'T preempt sync work). 200 KB is more than enough —
+// the footer email + JSON-LD + og:email meta all live in the first
+// ~100 KB of DOM order for every real-world site we've checked.
+const MAX_HTML_BYTES = 200_000;
 
 // Booking platforms small businesses use INSTEAD of their own contact page.
 // If the homepage links to one of these, we follow ONE such link as a
@@ -301,28 +304,69 @@ async function fetchAndExtract(
 
     const before = emails.length;
 
-    // 1. mailto: / tel: hrefs — highest signal.
+    // EARLY-EXIT pipeline: run extractors in order of CPU cost (cheap →
+    // expensive) and bail the moment we have a real email. Most sites
+    // land the email in the mailto: pass; running the other 5 extractors
+    // for nothing was burning event-loop budget for every single fetch.
+    //
+    // We also yield to the event loop (await new Promise(setImmediate))
+    // between heavy extractors so the per-lead Promise.race deadline can
+    // actually fire on time. setTimeout WILL NOT preempt a long
+    // synchronous regex pass; the scheduler only runs queued callbacks
+    // when the call stack is empty. Without these yields, 20 parallel
+    // harvest workers burying the event loop in regex work could push
+    // the 8 s deadline out by tens of seconds.
+
+    // 1. mailto: / tel: hrefs — fastest + highest-signal. Always run.
     const fromHrefs = extractFromHrefs(html);
     for (const e of fromHrefs.emails) emails.push(e.toLowerCase());
     for (const p of fromHrefs.phones) phones.push(p);
 
-    // 2. Cloudflare-obfuscated emails (data-cfemail attrs).
+    if (hasGoodEmail(emails)) {
+      if (emails.length > before) sourceUrls.push(target);
+      return html;
+    }
+    await new Promise((r) => setImmediate(r));
+
+    // 2. Cloudflare-obfuscated emails (data-cfemail attrs). Cheap regex.
     const cfEmails = extractCfEmails(html);
     for (const e of cfEmails) emails.push(e);
+    if (hasGoodEmail(emails)) {
+      if (emails.length > before) sourceUrls.push(target);
+      return html;
+    }
+    await new Promise((r) => setImmediate(r));
 
-    // 3. JSON-LD structured data (Schema.org Restaurant/Organization/etc).
+    // 3. og:email / business:email / contact:email meta tags. Cheap.
+    for (const e of extractMetaEmails(html)) emails.push(e);
+    if (hasGoodEmail(emails)) {
+      if (emails.length > before) sourceUrls.push(target);
+      return html;
+    }
+    await new Promise((r) => setImmediate(r));
+
+    // 4. JSON-LD structured data. Medium cost — has to JSON.parse every
+    //    <script type="application/ld+json"> block.
     const fromLd = extractJsonLdEmails(html);
     for (const e of fromLd.emails) emails.push(e);
     for (const p of fromLd.phones) phones.push(p);
-
-    // 4. og:email / business:email / contact:email meta tags.
-    for (const e of extractMetaEmails(html)) emails.push(e);
+    if (hasGoodEmail(emails)) {
+      if (emails.length > before) sourceUrls.push(target);
+      return html;
+    }
+    await new Promise((r) => setImmediate(r));
 
     // 5. Inline JSON config blobs ("email":"..." in <script> tags).
-    //    Common in booking widgets (Setmore, Square) and SPA hydration data.
+    //    Medium cost — large regex over the full body.
     for (const e of extractInlineJsonEmails(html)) emails.push(e);
+    if (hasGoodEmail(emails)) {
+      if (emails.length > before) sourceUrls.push(target);
+      return html;
+    }
+    await new Promise((r) => setImmediate(r));
 
-    // 6. Plain text + unobfuscated regex pass.
+    // 6. Plain text + unobfuscated regex pass. Most expensive — strips
+    //    every tag, decodes obfuscation, runs two full-body regexes.
     const text = unobfuscate(stripMarkup(html));
     const foundEmails = text.match(EMAIL_RE) ?? [];
     for (const email of foundEmails) emails.push(email.toLowerCase());
