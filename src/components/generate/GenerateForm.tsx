@@ -243,6 +243,19 @@ export function GenerateForm() {
       setTargetInput("");
       setStage({ kind: "idle" });
       router.refresh();
+
+      // Auto-scroll DOWN to the campaigns list so the user sees their new
+      // run actually populating instead of staring at the empty form again.
+      // 250ms delay lets router.refresh() reflow the page first; otherwise
+      // we measure the old layout and land at the wrong offset.
+      setTimeout(() => {
+        const target =
+          document.getElementById("running-now") ??
+          document.getElementById("recent-history");
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 250);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setStage({

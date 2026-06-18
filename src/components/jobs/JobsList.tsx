@@ -249,8 +249,13 @@ function Section({
   accent?: boolean;
   children: React.ReactNode;
 }) {
+  // Stable DOM id derived from the title so GenerateForm can scroll to
+  // 'Running now' (id=running-now) or 'Recent history' (id=recent-history)
+  // after the user submits a new campaign. scroll-mt-24 leaves space for
+  // the sticky topbar.
+  const sectionId = title.toLowerCase().replace(/\s+/g, "-");
   return (
-    <section className="space-y-3">
+    <section id={sectionId} className="space-y-3 scroll-mt-24">
       <div className="flex items-center gap-2">
         <h2
           className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${accent ? "text-[var(--brand-700)]" : "text-[var(--ink-subtle)]"}`}

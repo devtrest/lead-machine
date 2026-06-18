@@ -2,6 +2,7 @@ import { Zap, Globe2, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { JobsList, type JobRun } from "@/components/jobs/JobsList";
 import { GenerateForm } from "@/components/generate/GenerateForm";
+import { ScrollToHash } from "@/components/jobs/ScrollToHash";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,11 @@ export default async function JobsPage() {
 
   return (
     <div className="space-y-8">
+      {/* Smooth-scrolls to ?hash on hydration. Lets links like
+          /user/jobs#generate from the Dashboard land directly on the form
+          instead of at the page header. No-op if the URL has no hash. */}
+      <ScrollToHash />
+
       {/* Page header */}
       <div className="flex flex-col gap-4 border-b border-[var(--border)] pb-6 md:flex-row md:items-end md:justify-between">
         <div>
