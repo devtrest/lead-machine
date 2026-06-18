@@ -104,10 +104,93 @@ function normalize(s: string): string {
   return s.toLowerCase().trim();
 }
 
+// Shared prompt used by both AI providers — same system + user messages
+// regardless of provider so cluster quality is consistent if you swap keys.
+function clusterPrompt(keyword: string, max: number) {
+  return {
+    system:
+      "You return only a JSON array of short business-category keywords. No prose, no markdown.",
+    user: `Give me ${max} closely related business niche keywords for "${keyword}". Each should be a short business category that someone would search on Google Maps. Don't repeat the input. Return only a JSON array of strings.`,
+  };
+}
+
+function parseJsonArrayKeywords(text: string, max: number): string[] {
+  const cleaned = text
+    .replace(/```(?:json)?\s*/g, "")
+    .replace(/```$/g, "")
+    .trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((v: unknown): v is string => typeof v === "string")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, max);
+  } catch {
+    return [];
+  }
+}
+
+async function tryOpenAI(keyword: string, max: number): Promise<string[]> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) return [];
+  const { system, user } = clusterPrompt(keyword, max);
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        // gpt-4o-mini — cheap, fast, strong at structured JSON output.
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+        // Force JSON-mode so the model can't wander into prose. The user
+        // message already asks for a JSON array; this guarantees it.
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const text: string = json?.choices?.[0]?.message?.content ?? "";
+    // json_object mode returns an object with the keys we ask for. The
+    // prompt asks for an array directly, so the model often wraps it like
+    // { "keywords": [...] }. Parse defensively — accept either shape.
+    let arr: string[] = parseJsonArrayKeywords(text, max);
+    if (arr.length === 0) {
+      try {
+        const obj = JSON.parse(text);
+        for (const key of Object.keys(obj ?? {})) {
+          if (Array.isArray(obj[key])) {
+            arr = obj[key]
+              .filter((v: unknown): v is string => typeof v === "string")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+              .slice(0, max);
+            if (arr.length > 0) break;
+          }
+        }
+      } catch {
+        /* already tried JSON.parse — give up gracefully */
+      }
+    }
+    return arr;
+  } catch {
+    return [];
+  }
+}
+
 async function tryMistral(keyword: string, max: number): Promise<string[]> {
   const apiKey = process.env.MISTRAL_API_KEY?.trim();
   if (!apiKey) return [];
-
+  const { system, user } = clusterPrompt(keyword, max);
   try {
     const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
@@ -118,15 +201,8 @@ async function tryMistral(keyword: string, max: number): Promise<string[]> {
       body: JSON.stringify({
         model: "mistral-small-latest",
         messages: [
-          {
-            role: "system",
-            content:
-              "You return only a JSON array of short business-category keywords. No prose, no markdown.",
-          },
-          {
-            role: "user",
-            content: `Give me ${max} closely related business niche keywords for "${keyword}". Each should be a short business category that someone would search on Google Maps. Don't repeat the input. Return only a JSON array of strings.`,
-          },
+          { role: "system", content: system },
+          { role: "user", content: user },
         ],
         temperature: 0.3,
         max_tokens: 200,
@@ -135,14 +211,7 @@ async function tryMistral(keyword: string, max: number): Promise<string[]> {
     if (!res.ok) return [];
     const json = await res.json();
     const text: string = json?.choices?.[0]?.message?.content ?? "";
-    const cleaned = text.replace(/```(?:json)?\s*/g, "").replace(/```$/g, "").trim();
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((v: unknown): v is string => typeof v === "string")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, max);
+    return parseJsonArrayKeywords(text, max);
   } catch {
     return [];
   }
@@ -233,7 +302,14 @@ export async function expandKeyword(
   const seed = normalize(keyword);
   const out = new Set<string>();
 
-  const ai = await tryMistral(keyword, max);
+  // Provider preference: OpenAI (gpt-4o-mini) → Mistral → static cluster
+  // table → generic 'best X / top X / X near me' suffixes. Each provider's
+  // tryX() returns [] when its key isn't set, so we just walk the chain
+  // until something lands keywords or we exhaust the options.
+  let ai = await tryOpenAI(keyword, max);
+  if (ai.length === 0) {
+    ai = await tryMistral(keyword, max);
+  }
   for (const k of ai) {
     const n = normalize(k);
     if (n && n !== seed) out.add(n);

@@ -1,19 +1,4 @@
-/**
- * Niche keyword expansion. When the user asks for N leads but the first
- * keyword only yields M < N, we expand to a related-niche cluster and merge
- * results (the scraper dedupes by title+placeUrl).
- *
- * Two strategies, picked in this order:
- *   1. Mistral API if MISTRAL_API_KEY is set — returns AI-generated related
- *      niches with proper synonym/category coverage.
- *   2. Hardcoded niche map — fast, free, no external dep. Covers the common
- *      verticals (dental, fitness, food, beauty, automotive, etc.). Falls
- *      back to a generic "$keyword near me" + "best $keyword" prefix
- *      expansion for niches we don't have curated entries for.
- */
-
 const STATIC_CLUSTERS: Record<string, string[]> = {
-  // Dental
   dentist: [
     "orthodontist",
     "oral surgeon",
@@ -23,7 +8,6 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "dental implants",
     "endodontist",
   ],
-  // Beauty / personal care
   "beauty salon": [
     "hair salon",
     "nail salon",
@@ -34,7 +18,6 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "lash studio",
   ],
   salon: ["beauty salon", "hair salon", "nail salon", "barbershop", "spa"],
-  // Fitness
   gym: [
     "fitness center",
     "personal trainer",
@@ -44,7 +27,6 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "boxing gym",
     "martial arts",
   ],
-  // Food
   restaurant: [
     "cafe",
     "bistro",
@@ -55,7 +37,6 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "pizzeria",
   ],
   cafe: ["coffee shop", "bakery", "tea house", "bistro", "patisserie"],
-  // Health
   doctor: [
     "physician",
     "medical clinic",
@@ -65,7 +46,6 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
   ],
   hospital: ["medical center", "clinic", "urgent care", "emergency room"],
   pharmacy: ["chemist", "drugstore", "medical store", "compounding pharmacy"],
-  // Automotive
   "car dealership": [
     "used car dealer",
     "auto dealer",
@@ -79,14 +59,12 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "tire shop",
     "oil change",
   ],
-  // Real estate
   "real estate agent": [
     "real estate agency",
     "realtor",
     "property dealer",
     "property consultant",
   ],
-  // Legal
   lawyer: [
     "attorney",
     "law firm",
@@ -94,7 +72,6 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "corporate lawyer",
     "family lawyer",
   ],
-  // Education
   school: [
     "private school",
     "academy",
@@ -102,9 +79,7 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "tutoring center",
     "coaching center",
   ],
-  // Retail
   "clothing store": ["boutique", "fashion store", "apparel shop", "menswear", "womenswear"],
-  // Services
   "cleaning service": [
     "house cleaning",
     "office cleaning",
@@ -117,11 +92,9 @@ const STATIC_CLUSTERS: Record<string, string[]> = {
     "photo studio",
     "event photographer",
   ],
-  // Hospitality
   hotel: ["guest house", "boutique hotel", "bed and breakfast", "serviced apartment"],
 };
 
-/** Add lightweight prefix variants to any seed keyword. */
 function genericVariants(keyword: string): string[] {
   const k = keyword.toLowerCase().trim();
   return [`best ${k}`, `top ${k}`, `${k} near me`];
@@ -131,39 +104,22 @@ function normalize(s: string): string {
   return s.toLowerCase().trim();
 }
 
-async function tryMistral(keyword: string, max: number): Promise<string[]> {
-  const apiKey = process.env.MISTRAL_API_KEY?.trim();
-  if (!apiKey) return [];
+// Shared prompt used by both AI providers — same system + user messages
+// regardless of provider so cluster quality is consistent if you swap keys.
+function clusterPrompt(keyword: string, max: number) {
+  return {
+    system:
+      "You return only a JSON array of short business-category keywords. No prose, no markdown.",
+    user: `Give me ${max} closely related business niche keywords for "${keyword}". Each should be a short business category that someone would search on Google Maps. Don't repeat the input. Return only a JSON array of strings.`,
+  };
+}
 
+function parseJsonArrayKeywords(text: string, max: number): string[] {
+  const cleaned = text
+    .replace(/```(?:json)?\s*/g, "")
+    .replace(/```$/g, "")
+    .trim();
   try {
-    const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "mistral-small-latest",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You return only a JSON array of short business-category keywords. No prose, no markdown.",
-          },
-          {
-            role: "user",
-            content: `Give me ${max} closely related business niche keywords for "${keyword}". Each should be a short business category that someone would search on Google Maps. Don't repeat the input. Return only a JSON array of strings.`,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 200,
-      }),
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    const text: string = json?.choices?.[0]?.message?.content ?? "";
-    // Tolerant parse — strip code fences if present
-    const cleaned = text.replace(/```(?:json)?\s*/g, "").replace(/```$/g, "").trim();
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) return [];
     return parsed
@@ -176,14 +132,96 @@ async function tryMistral(keyword: string, max: number): Promise<string[]> {
   }
 }
 
-/**
- * Return up to `max` related niche keywords, never including the input.
- * Tries Mistral first (if configured), then hardcoded clusters, then
- * lightweight prefix variants as a final fallback.
- */
+async function tryOpenAI(keyword: string, max: number): Promise<string[]> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) return [];
+  const { system, user } = clusterPrompt(keyword, max);
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        // gpt-4o-mini — cheap, fast, strong at structured JSON output.
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+        // Force JSON-mode so the model can't wander into prose. The user
+        // message already asks for a JSON array; this guarantees it.
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const text: string = json?.choices?.[0]?.message?.content ?? "";
+    // json_object mode returns an object with the keys we ask for. The
+    // prompt asks for an array directly, so the model often wraps it like
+    // { "keywords": [...] }. Parse defensively — accept either shape.
+    let arr: string[] = parseJsonArrayKeywords(text, max);
+    if (arr.length === 0) {
+      try {
+        const obj = JSON.parse(text);
+        for (const key of Object.keys(obj ?? {})) {
+          if (Array.isArray(obj[key])) {
+            arr = obj[key]
+              .filter((v: unknown): v is string => typeof v === "string")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+              .slice(0, max);
+            if (arr.length > 0) break;
+          }
+        }
+      } catch {
+        /* already tried JSON.parse — give up gracefully */
+      }
+    }
+    return arr;
+  } catch {
+    return [];
+  }
+}
 
-// Country → major cities, for spreading a country-wide search geographically
-// (Places caps each query at ~60 results). Mirrors worker/src/keywords.ts.
+async function tryMistral(keyword: string, max: number): Promise<string[]> {
+  const apiKey = process.env.MISTRAL_API_KEY?.trim();
+  if (!apiKey) return [];
+  const { system, user } = clusterPrompt(keyword, max);
+  try {
+    const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "mistral-small-latest",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+      }),
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const text: string = json?.choices?.[0]?.message?.content ?? "";
+    return parseJsonArrayKeywords(text, max);
+  } catch {
+    return [];
+  }
+}
+
+// Google Places Text Search caps at ~60 results per query and a broad query
+// ("X united states") just returns the top 60 nationally. To reach large
+// targets we re-run the search across many cities of the requested country —
+// geographic spread yields mostly NEW (non-overlapping) businesses. Only used
+// when the location is (essentially) a whole country.
 const COUNTRY_CITIES: Record<string, string[]> = {
   "united states": [
     "New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia",
@@ -244,6 +282,11 @@ const COUNTRY_ALIASES: Record<string, string> = {
   uae: "united arab emirates",
 };
 
+/**
+ * If the location is essentially a whole country, return that country's major
+ * cities (as "City, Country") to spread the search geographically. For a
+ * specific city/state we return [] and rely on keyword variation instead.
+ */
 export function expandLocation(location: string): string[] {
   const norm = location.toLowerCase().trim().replace(/[.\s]+$/, "");
   const canonical = COUNTRY_ALIASES[norm] ?? norm;
@@ -259,14 +302,19 @@ export async function expandKeyword(
   const seed = normalize(keyword);
   const out = new Set<string>();
 
-  // 1. AI-driven expansion
-  const ai = await tryMistral(keyword, max);
+  // Provider preference: OpenAI (gpt-4o-mini) → Mistral → static cluster
+  // table → generic 'best X / top X / X near me' suffixes. Each provider's
+  // tryX() returns [] when its key isn't set, so we just walk the chain
+  // until something lands keywords or we exhaust the options.
+  let ai = await tryOpenAI(keyword, max);
+  if (ai.length === 0) {
+    ai = await tryMistral(keyword, max);
+  }
   for (const k of ai) {
     const n = normalize(k);
     if (n && n !== seed) out.add(n);
   }
 
-  // 2. Static curated clusters
   if (out.size < max) {
     const direct = STATIC_CLUSTERS[seed];
     if (direct) {
@@ -276,7 +324,6 @@ export async function expandKeyword(
         if (n && n !== seed) out.add(n);
       }
     } else {
-      // Fuzzy match: does the seed appear in any cluster key or values?
       for (const [head, related] of Object.entries(STATIC_CLUSTERS)) {
         if (head.includes(seed) || seed.includes(head)) {
           for (const k of related) {
@@ -289,7 +336,6 @@ export async function expandKeyword(
     }
   }
 
-  // 3. Generic prefix fallback
   if (out.size < max) {
     for (const v of genericVariants(keyword)) {
       if (out.size >= max) break;
