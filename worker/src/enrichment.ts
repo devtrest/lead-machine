@@ -160,8 +160,12 @@ const CONTACT_PATHS = [
 // Cap fetches so a no-email site can't crawl forever, but high enough to reach
 // the contact + a booking-platform link if neither has the email on the
 // homepage directly.
+//
+// FETCH_TIMEOUT_MS is per-attempt; the caller in scrape-job.ts ALSO applies a
+// hard ~12s per-lead deadline via Promise.race, so the worst case stays
+// bounded even if multiple attempts straggle simultaneously.
 const MAX_FETCH_ATTEMPTS = 6;
-const FETCH_TIMEOUT_MS = 7_000;
+const FETCH_TIMEOUT_MS = 5_000;
 
 // Booking platforms small businesses use INSTEAD of their own contact page.
 // If the homepage links to one of these, we follow ONE such link as a

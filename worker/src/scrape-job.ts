@@ -176,6 +176,12 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
   if (harvestable.length > 0) {
     onEvent({ phase: "harvesting", count: 0, target: harvestable.length });
     const HARVEST_CONCURRENCY = 10;
+    // Hard per-lead deadline. With the path expansion + booking-platform
+    // fallback, a no-email site can otherwise burn 6 fetches × 7s = 42s of
+    // worker time blocking a queue slot. 12s caps the worst case at roughly
+    // 1.5 × the time a healthy site needs, while still letting us land
+    // emails on most real sites (homepage hit usually returns in under 3s).
+    const PER_LEAD_BUDGET_MS = 12_000;
     let cursor = 0;
     let done = 0;
     await Promise.all(
@@ -186,7 +192,15 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
           const { lead } = harvestable[i];
           const websiteUrl = lead.website_url as string;
           try {
-            const enriched = await enrichFromWebsite(websiteUrl, 3);
+            const enriched = await Promise.race([
+              enrichFromWebsite(websiteUrl, 3),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("enrichment deadline")),
+                  PER_LEAD_BUDGET_MS
+                )
+              ),
+            ]);
             const sourceUrl = enriched.sourceUrls[0] ?? websiteUrl;
             for (const email of enriched.emails) {
               contactRows.push({
