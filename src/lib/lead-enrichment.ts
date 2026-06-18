@@ -479,6 +479,15 @@ async function fetchAndExtract(
     // small-business contact emails almost always live) is always in scope
     // even on heavyweight Bootstrap/CMS sites where it sits past 200 KB.
     const rawHtml = sliceHtml(await res.text());
+
+    // Detect bot-protection challenge pages (Cloudflare "Just a moment...",
+    // Imperva, Akamai, DataDome). They return 200 OK with a JS challenge
+    // shell instead of the real site, so all our extractors run on garbage
+    // and waste budget. Bail immediately and let the next path / sitemap
+    // /www-variant try a different angle.
+    if (isBotProtectionChallenge(rawHtml)) {
+      return rawHtml;
+    }
     // Decode the common HTML entities BEFORE running any extractors so
     // entity-obfuscated emails ("info&#64;example.com" → "info@example.com")
     // surface in the regex / inline-JSON passes. Doing this on the raw HTML
@@ -581,6 +590,27 @@ async function fetchAndExtract(
 
 function hasGoodEmail(emails: string[]): boolean {
   return unique(emails).filter(isLikelyRealEmail).length >= 1;
+}
+
+// Anti-bot challenge pages return 200 OK with a tiny JS shell instead of
+// the real site. Cloudflare's "Just a moment..." is by far the most common
+// (~20% of UK/EU finance + retail), but Akamai, Imperva (Incapsula),
+// DataDome, and PerimeterX all use the same pattern. Running our 6
+// extractors over the challenge HTML is wasted CPU and can even false-
+// positive on script-src host strings. Bail at the door instead.
+function isBotProtectionChallenge(html: string): boolean {
+  // Cheap check first — the challenge pages are always < 10 KB.
+  if (html.length > 50_000) return false;
+  return (
+    /Just a moment\.\.\./i.test(html) ||
+    /challenges\.cloudflare\.com/i.test(html) ||
+    /cf-challenge-running/i.test(html) ||
+    /_Incapsula_Resource/i.test(html) ||
+    /datadome-captcha/i.test(html) ||
+    /perimeterx/i.test(html) ||
+    /Akamai\s+Bot\s+Manager/i.test(html) ||
+    /Checking your browser before accessing/i.test(html)
+  );
 }
 
 // SITEMAP DISCOVERY — many CMS sites publish sitemap.xml listing every
