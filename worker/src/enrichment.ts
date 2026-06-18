@@ -183,13 +183,32 @@ const FETCH_TIMEOUT_MS = 4_000;
 
 // Hard cap on the HTML body we'll keep per fetch. Some Shopify/Squarespace
 // pages serve 2-5 MB of inline JSON, CSS, and tracker scripts. EVERY
-// regex extractor below runs on the full string; 800 KB × 6 extractors ×
-// 20 concurrent workers was burying the Node event loop in CPU work,
-// which delayed the per-lead Promise.race timeout from firing on time
-// (Promise.race CAN'T preempt sync work). 200 KB is more than enough —
-// the footer email + JSON-LD + og:email meta all live in the first
-// ~100 KB of DOM order for every real-world site we've checked.
-const MAX_HTML_BYTES = 200_000;
+// regex extractor below runs on the full string; running them on the full
+// body × 6 extractors × 20 concurrent workers was burying the Node event
+// loop in CPU work and delaying the per-lead Promise.race deadline.
+//
+// We preserve a HEAD slice AND a TAIL slice (see sliceHtml below) so the
+// document footer — where small-business contact emails almost always
+// live — is never truncated away even on huge pages.
+const MAX_HTML_BYTES = 300_000;
+const HEAD_SLICE_RATIO = 0.6; // 60% of the cap goes to the start of the doc
+                              // (head / nav / start-of-content), 40% to the
+                              // tail (footer / contact / bottom scripts).
+
+// On a Victoria Street FX-style site, the footer holds the only published
+// email but sits well past 200 KB into the body (because the site precedes
+// it with inline tracker JS and a Bootstrap CSS bundle). A naive
+// html.slice(0, MAX_HTML_BYTES) drops the footer entirely and we miss the
+// email. Concatenating the head + tail keeps the regex cost the same as a
+// single-slice truncation while guaranteeing the footer is always in scope.
+function sliceHtml(raw: string): string {
+  if (raw.length <= MAX_HTML_BYTES) return raw;
+  const headBytes = Math.floor(MAX_HTML_BYTES * HEAD_SLICE_RATIO);
+  const tailBytes = MAX_HTML_BYTES - headBytes;
+  // The newline separator stops a regex match from straddling the slice
+  // boundary (e.g. a half-mailto: anchor pasted to a half-href= attribute).
+  return raw.slice(0, headBytes) + "\n" + raw.slice(-tailBytes);
+}
 
 // Booking platforms small businesses use INSTEAD of their own contact page.
 // If the homepage links to one of these, we follow ONE such link as a
@@ -222,6 +241,31 @@ function findBookingLinks(html: string): string[] {
       }
     }
   }
+  return unique(out);
+}
+
+// Specifically target the <footer> section of the HTML — that's where 80%
+// of small-business contact emails actually live. By isolating the footer
+// first we run a smaller, faster regex on the densest signal area, and
+// we sidestep the case where a busy header / nav / hero section eats up
+// the budget before we get to the contact info.
+function extractFooterEmails(html: string): string[] {
+  // Be liberal about matching — <footer>, <div class="footer">, role="contentinfo"
+  const footerOpen = html.search(
+    /<footer\b|<div[^>]+(?:class|id)\s*=\s*["'][^"']*footer|<address\b|role\s*=\s*["']contentinfo["']/i
+  );
+  if (footerOpen < 0) return [];
+  const footerSlice = html.slice(footerOpen);
+  const out: string[] = [];
+  // Mailto first
+  const mailtoRe = /href\s*=\s*["']mailto:([^"'?#]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = mailtoRe.exec(footerSlice)) !== null) {
+    out.push(decodeURIComponent(m[1]).trim().toLowerCase());
+  }
+  // Then any plain-text email pattern in this region
+  const matches = footerSlice.match(EMAIL_RE) ?? [];
+  for (const e of matches) out.push(e.toLowerCase());
   return unique(out);
 }
 
@@ -286,16 +330,15 @@ async function fetchAndExtract(
     });
     clearTimeout(timeoutId);
     if (!res.ok) return null;
-    // Truncate massive HTML bodies before doing any string work. Shopify
-    // pages routinely serve 2-5 MB of inline JSON/CSS; running ten regex
-    // passes over that on a 16-wide harvest queue blocks the event loop
-    // long enough to stall the per-lead Promise.race timeout. The footer +
-    // header (where every email signal lives in practice) are always within
-    // the first 500-800 KB of DOM order, so we lose nothing useful.
-    let rawHtml = await res.text();
-    if (rawHtml.length > MAX_HTML_BYTES) {
-      rawHtml = rawHtml.slice(0, MAX_HTML_BYTES);
-    }
+    // Truncate massive HTML bodies before doing any string work. Big CMS
+    // pages routinely serve 2-5 MB of inline JSON/CSS; running multiple
+    // regex passes over that on a 20-wide harvest queue blocks the event
+    // loop long enough to stall the per-lead Promise.race timeout.
+    //
+    // sliceHtml() keeps a head slice AND a tail slice — the footer (where
+    // small-business contact emails almost always live) is always in scope
+    // even on heavyweight Bootstrap/CMS sites where it sits past 200 KB.
+    const rawHtml = sliceHtml(await res.text());
     // Decode the common HTML entities BEFORE running any extractors so
     // entity-obfuscated emails ("info&#64;example.com" → "info@example.com")
     // surface in the regex / inline-JSON passes. Doing this on the raw HTML
@@ -322,6 +365,17 @@ async function fetchAndExtract(
     for (const e of fromHrefs.emails) emails.push(e.toLowerCase());
     for (const p of fromHrefs.phones) phones.push(p);
 
+    if (hasGoodEmail(emails)) {
+      if (emails.length > before) sourceUrls.push(target);
+      return html;
+    }
+    await new Promise((r) => setImmediate(r));
+
+    // 1b. <footer> / <address> targeted scan. Small-business sites where
+    //     the email is plain text in the footer (no mailto:, no JSON-LD)
+    //     get caught here cheap — we only regex the footer slice, not the
+    //     whole body. Victoria Street FX style sites land here.
+    for (const e of extractFooterEmails(html)) emails.push(e);
     if (hasGoodEmail(emails)) {
       if (emails.length > before) sourceUrls.push(target);
       return html;
