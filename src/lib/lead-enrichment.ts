@@ -88,9 +88,106 @@ function extractFromHrefs(html: string): { emails: string[]; phones: string[] } 
 }
 
 function unobfuscate(text: string): string {
-  return text
-    .replace(/\s*[\[(]?\s*at\s*[\])]?\s*/gi, "@")
-    .replace(/\s*[\[(]?\s*dot\s*[\])]?\s*/gi, ".");
+  return (
+    text
+      // " [at] " / " (at) " / " {at} " / " at " when bracketed
+      .replace(/\s*[\[({]\s*at\s*[\])}]\s*/gi, "@")
+      .replace(/\s+at\s+(?=\w+\s*[.])/gi, "@") // " name at example.com"
+      // " [dot] " / " (dot) " / " {dot} "
+      .replace(/\s*[\[({]\s*dot\s*[\])}]\s*/gi, ".")
+      .replace(/\s+dot\s+(?=[a-z]{2,})/gi, ".") // " example dot com"
+      // Less common: "@" written as "AT" or "(AT)" without brackets
+      .replace(/\s*\bAT\b\s*/g, "@")
+      // Single quotes / smart quotes that some sites use to break the @
+      .replace(/['']\s*at\s*['']/gi, "@")
+      .replace(/['']\s*\.\s*['']/g, ".")
+      // Some sites split with HTML comments to defeat scrapers
+      .replace(/<!--[^>]*?-->/g, "")
+  );
+}
+
+// Score and return the most promising INTERNAL links from a homepage by
+// the text they expose. Instead of guessing /contact /contact-us, we look
+// at the actual navigation and follow whatever the SITE OWNER labeled as
+// 'Contact', 'About', 'Get in touch', etc. Catches unconventional URLs
+// like /reach-us, /about/contact, /the-team, /staff-directory.
+function findContactCandidateLinks(
+  html: string,
+  baseUrl: URL
+): string[] {
+  // Words that indicate "this link will probably have an email"
+  const SIGNAL_WORDS = [
+    /contact/i,
+    /reach\s*us/i,
+    /get\s*in\s*touch/i,
+    /get\s*touch/i,
+    /talk\s*to\s*us/i,
+    /about\b/i,
+    /about\s*us/i,
+    /our\s*team/i,
+    /team\b/i,
+    /staff/i,
+    /people\b/i,
+    /our\s*story/i,
+    /who\s*we\s*are/i,
+    /support/i,
+    /help\b/i,
+    /info\b/i,
+    /find\s*us/i,
+    /visit\s*us/i,
+  ];
+
+  const out: { url: string; score: number }[] = [];
+  // Capture <a href="..." ...>text</a> with the link text exposed.
+  const re = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]{0,200}?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1].trim();
+    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+      continue;
+    }
+    // Strip HTML out of the anchor text so signal-word matches don't
+    // catch text inside nested tags.
+    const text = m[2].replace(/<[^>]+>/g, " ").trim();
+    if (!text) continue;
+
+    let score = 0;
+    for (let i = 0; i < SIGNAL_WORDS.length; i++) {
+      if (SIGNAL_WORDS[i].test(text)) {
+        // Front of the list (contact, reach us, etc.) gets the highest
+        // score; about/team get lower.
+        score += Math.max(1, 10 - i);
+      }
+    }
+    if (score === 0) continue;
+
+    let absolute: string;
+    try {
+      absolute = new URL(href, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    // Reject cross-domain links — only follow internal pages.
+    try {
+      const u = new URL(absolute);
+      if (u.host !== baseUrl.host) continue;
+    } catch {
+      continue;
+    }
+    out.push({ url: absolute, score });
+  }
+
+  // Sort by score desc, dedup by URL, take top 3.
+  const seen = new Set<string>();
+  return out
+    .sort((a, b) => b.score - a.score)
+    .filter((x) => {
+      if (seen.has(x.url)) return false;
+      seen.add(x.url);
+      return true;
+    })
+    .slice(0, 3)
+    .map((x) => x.url);
 }
 
 // Cloudflare's "Email Address Obfuscation" rewrites every mailto: and visible
@@ -178,7 +275,7 @@ const CONTACT_PATHS = [
 // FETCH_TIMEOUT_MS is per-attempt; the caller in scrape-job.ts ALSO applies a
 // hard ~8 s per-lead deadline via Promise.race, so the worst case stays
 // bounded even if multiple attempts straggle simultaneously.
-const MAX_FETCH_ATTEMPTS = 5;
+const MAX_FETCH_ATTEMPTS = 6;
 const FETCH_TIMEOUT_MS = 4_000;
 
 // Hard cap on the HTML body we'll keep per fetch. Some Shopify/Squarespace
@@ -492,6 +589,30 @@ export async function enrichFromWebsite(
     // booking-platform links if every contact path fails to surface an email.
     if (target === candidates[0] && html) homepageHtml = html;
     if (hasGoodEmail(emails)) break;
+  }
+
+  // SMART CONTACT-PAGE DISCOVERY — if our common-path guesses didn't land
+  // an email but we have the homepage HTML, parse its navigation to find
+  // whatever the site OWNER labeled 'Contact', 'About', 'Reach us', etc.
+  // and follow up to 2 of those links. Way better hit rate than guessing
+  // /contact-us for a site that uses /get-in-touch or /the-team.
+  if (!hasGoodEmail(emails) && homepageHtml && attempts < MAX_FETCH_ATTEMPTS) {
+    const smartLinks = findContactCandidateLinks(homepageHtml, base);
+    // Filter out paths we already tried.
+    const triedSet = new Set(candidates);
+    const fresh = smartLinks.filter((u) => !triedSet.has(u));
+    for (const link of fresh.slice(0, 2)) {
+      if (attempts >= MAX_FETCH_ATTEMPTS) break;
+      attempts++;
+      await fetchAndExtract(
+        link,
+        base.origin,
+        emails,
+        phones,
+        sourceUrls
+      );
+      if (hasGoodEmail(emails)) break;
+    }
   }
 
   // Fallback A — if the apex domain didn't yield an email, try the www
