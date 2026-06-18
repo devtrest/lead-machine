@@ -649,12 +649,39 @@ export function LeadsCrm() {
             </table>
           </div>
 
-          {totalPages > 1 ? (
-            <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--surface-sunken)]/50 px-4 py-3 text-xs text-[var(--ink-muted)]">
-              <span className="tabular-nums">
-                Page {page} of {totalPages}
-              </span>
+          {/* Pagination footer — always shown so the user can see how many
+              leads they have in total and how many are on this page, even
+              when there's only one page of results. Avoids the previous
+              footprint where the count gap (250 stored vs 80 visible) was
+              invisible because the footer hid itself when totalPages === 1. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] bg-[var(--surface-sunken)]/50 px-4 py-3 text-xs text-[var(--ink-muted)]">
+            <span className="tabular-nums">
+              Showing{" "}
+              <span className="font-semibold text-[var(--ink-strong)]">
+                {pageLeads.length === 0
+                  ? 0
+                  : `${(page - 1) * PAGE_SIZE + 1}–${
+                      (page - 1) * PAGE_SIZE + pageLeads.length
+                    }`}
+              </span>{" "}
+              of{" "}
+              <span className="font-semibold text-[var(--ink-strong)]">
+                {filtered.length.toLocaleString()}
+              </span>{" "}
+              {filter !== "all" || search ? "matching " : ""}
+              lead{filtered.length === 1 ? "" : "s"}
+              {filtered.length !== leads.length ? (
+                <span className="text-[var(--ink-subtle)]">
+                  {" "}
+                  · {leads.length.toLocaleString()} total
+                </span>
+              ) : null}
+            </span>
+            {totalPages > 1 ? (
               <div className="flex items-center gap-1">
+                <span className="mr-2 tabular-nums text-[var(--ink-subtle)]">
+                  Page {page} of {totalPages}
+                </span>
                 <button
                   type="button"
                   disabled={page === 1}
@@ -672,8 +699,8 @@ export function LeadsCrm() {
                   Next
                 </button>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       )}
 
