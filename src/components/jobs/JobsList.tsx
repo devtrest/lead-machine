@@ -14,7 +14,11 @@ import {
   Radar,
   Globe,
   Play,
+  StopCircle,
+  Trash2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/Toast";
 
 export type JobRun = {
   id: string;
@@ -374,18 +378,8 @@ function RunCard({
           </div>
         </div>
 
-        {/* Right: action button */}
-        <div className="flex shrink-0 items-center justify-end gap-2 md:flex-col md:items-end">
-          {variant !== "failed" && run.result_count > 0 ? (
-            <Link
-              href={`/user/leads?campaign=${run.id}`}
-              className="inline-flex items-center gap-1 rounded-lg bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[var(--brand-700)]"
-            >
-              View leads
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          ) : null}
-        </div>
+        {/* Right: actions */}
+        <RunCardActions run={run} variant={variant} />
       </div>
 
       {run.error ? (
@@ -433,6 +427,110 @@ function ProgressBar({
           />
         ) : null}
       </motion.div>
+    </div>
+  );
+}
+
+function RunCardActions({
+  run,
+  variant,
+}: {
+  run: JobRun;
+  variant: "running" | "completed" | "failed";
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, setBusy] = useState<"cancel" | "delete" | null>(null);
+
+  // Stop a running scrape — soft-cancel via PATCH. Worker sees the status
+  // change to 'failed' on its next DB check and bails out, keeping whatever
+  // leads it's already inserted.
+  async function cancel() {
+    if (!confirm("Stop this scrape? Leads already saved will be kept.")) return;
+    setBusy("cancel");
+    const res = await fetch(`/api/scan/runs/${run.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cancel" }),
+    });
+    setBusy(null);
+    if (res.ok) {
+      toast.success("Scrape cancelled", `"${run.keyword}" stopped`);
+      router.refresh();
+    } else {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error("Couldn't cancel", j.error);
+    }
+  }
+
+  // Hard-delete the run + all its leads (FK cascade). Works on any status,
+  // including currently-running scrapes — the worker's subsequent writes
+  // against this id become no-ops.
+  async function remove() {
+    if (
+      !confirm(
+        `Delete "${run.keyword}" and all ${run.result_count.toLocaleString()} leads from it? This can't be undone.`
+      )
+    ) {
+      return;
+    }
+    setBusy("delete");
+    const res = await fetch(`/api/scan/runs/${run.id}`, { method: "DELETE" });
+    setBusy(null);
+    if (res.ok) {
+      toast.success("Scrape deleted", `"${run.keyword}" removed`);
+      router.refresh();
+    } else {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error("Couldn't delete", j.error);
+    }
+  }
+
+  return (
+    <div className="flex shrink-0 items-center justify-end gap-1.5 md:flex-col md:items-end">
+      {variant !== "failed" && run.result_count > 0 ? (
+        <Link
+          href={`/user/leads?campaign=${run.id}`}
+          className="inline-flex items-center gap-1 rounded-lg bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[var(--brand-700)]"
+        >
+          View leads
+          <ArrowRight className="h-3 w-3" />
+        </Link>
+      ) : null}
+
+      <div className="flex items-center gap-1">
+        {variant === "running" ? (
+          <button
+            type="button"
+            onClick={cancel}
+            disabled={busy !== null}
+            title="Stop this scrape"
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[var(--ink-strong)] transition hover:border-[var(--warning-300)] hover:bg-[var(--warning-50)] hover:text-[var(--warning-700)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy === "cancel" ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <StopCircle className="h-3 w-3" />
+            )}
+            Stop
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={remove}
+          disabled={busy !== null}
+          title="Delete this scrape and all its leads"
+          className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[var(--ink-muted)] transition hover:border-[var(--danger-300)] hover:bg-[var(--danger-50)] hover:text-[var(--danger-700)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy === "delete" ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Trash2 className="h-3 w-3" />
+          )}
+          Delete
+        </button>
+      </div>
     </div>
   );
 }
