@@ -175,13 +175,15 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
 
   if (harvestable.length > 0) {
     onEvent({ phase: "harvesting", count: 0, target: harvestable.length });
-    const HARVEST_CONCURRENCY = 10;
-    // Hard per-lead deadline. With the path expansion + booking-platform
-    // fallback, a no-email site can otherwise burn many fetches blocking a
-    // queue slot. 18 s caps the worst case while still letting the homepage
-    // get its 8 s grace (Squarespace/Wix render slow) plus one or two
-    // fallback paths inside the budget.
-    const PER_LEAD_BUDGET_MS = 18_000;
+    // 16 concurrent harvests + 12 s per-lead budget keeps the worst case
+    // bounded:
+    //   250 leads × 12 s / 16 concurrent = ~188 s = ~3 min ceiling
+    // The homepage fetch still gets its 8 s grace (Squarespace/Wix render
+    // slow), so a healthy site usually returns in 3-5 s; the budget only
+    // bites on dead/Cloudflare-challenged hosts. Concurrency stays well
+    // below typical Railway container limits (no fd exhaustion at 16).
+    const HARVEST_CONCURRENCY = 16;
+    const PER_LEAD_BUDGET_MS = 12_000;
     let cursor = 0;
     let done = 0;
     await Promise.all(

@@ -273,6 +273,17 @@ function RunCard({
     run.limit_count > 0
       ? Math.min(100, Math.round((run.result_count / run.limit_count) * 100))
       : 0;
+  // When discovery has produced its full lead count but status is still
+  // 'running', we're in the email-enrichment phase — visit each lead's
+  // website to pull contact emails. The 'Scraping live' pill at this point
+  // looks contradictory next to a 100% progress bar; swap it for
+  // 'Enriching emails' so the user knows what's still happening.
+  const phaseVariant: "running" | "enriching" | "completed" | "failed" =
+    variant === "running" &&
+    run.limit_count > 0 &&
+    run.result_count >= run.limit_count
+      ? "enriching"
+      : variant;
   const elapsedMs =
     new Date(run.finished_at ?? Date.now()).getTime() -
     new Date(run.started_at).getTime();
@@ -321,7 +332,7 @@ function RunCard({
                 <h3 className="truncate text-base font-semibold capitalize text-[var(--ink-strong)]">
                   {run.keyword}
                 </h3>
-                <StatusPill variant={variant} />
+                <StatusPill variant={phaseVariant} />
               </div>
               <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
                 {run.location}
@@ -429,7 +440,7 @@ function ProgressBar({
 function StatusPill({
   variant,
 }: {
-  variant: "running" | "completed" | "failed";
+  variant: "running" | "enriching" | "completed" | "failed";
 }) {
   if (variant === "running") {
     return (
@@ -439,6 +450,17 @@ function StatusPill({
           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--brand-600)]" />
         </span>
         Scraping live
+      </span>
+    );
+  }
+  if (variant === "enriching") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-[var(--accent-100)] bg-[var(--accent-50)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--accent-700)]">
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent-500)] opacity-75" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent-600)]" />
+        </span>
+        Enriching emails
       </span>
     );
   }
