@@ -232,7 +232,7 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
 
             <div className="flex items-center justify-end gap-2">
               <Link
-                href="/user/jobs"
+                href="/user/jobs#generate"
                 className="hidden items-center gap-1.5 rounded-full bg-gradient-to-r from-[var(--brand-600)] to-[var(--brand-500)] px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_4px_14px_rgba(79,70,229,0.25)] transition hover:opacity-95 sm:inline-flex"
               >
                 <Sparkles className="h-3.5 w-3.5" />

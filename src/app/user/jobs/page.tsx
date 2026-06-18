@@ -59,8 +59,15 @@ export default async function JobsPage() {
         </div>
       </div>
 
-      {/* New-campaign form + value props */}
-      <section className="grid gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-start">
+      {/* New-campaign form + value props.
+          id="generate" lets the topbar 'New campaign' button (and the
+          dashboard hero) jump straight to this section instead of just
+          landing the user on the page header. scroll-mt-24 leaves room
+          for the sticky topbar at the top so the form isn't clipped. */}
+      <section
+        id="generate"
+        className="grid scroll-mt-24 gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-start"
+      >
         <div className="surface-card p-6">
           <GenerateForm />
         </div>

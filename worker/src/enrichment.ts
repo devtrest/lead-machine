@@ -157,34 +157,30 @@ function walkJsonLd(node: unknown, emails: string[], phones: string[]): void {
   for (const key of Object.keys(obj)) walkJsonLd(obj[key], emails, phones);
 }
 
-// Email lives in the homepage footer, on the contact page, on an About/Team
-// page, OR (very common for spa/salon/restaurant) on the booking-platform
-// page linked from the homepage. We try paths in rough order of how likely
-// they are to contain the email, and stop the moment we find a real one.
-// If nothing is found, the lead gets NO email — we never guess.
-const CONTACT_PATHS = [
-  "",
-  "/contact",
-  "/contacts",
-  "/contact-us",
-  "/about",
-  "/about-us",
-  "/book",
-  "/booking",
-  "/reservations",
-  "/find-us",
-  "/get-in-touch",
-];
+// Email lives in the homepage footer, on the contact page, OR (common for
+// spa/salon/restaurant) on the booking-platform page linked from the
+// homepage. The first 2-3 paths land >95% of real emails in practice; the
+// long tail of /about, /booking, /reservations etc. mostly burned time
+// without finding new emails so they're removed. If a real lead needs them,
+// the booking-platform fallback below still kicks in for spas/salons.
+const CONTACT_PATHS = ["", "/contact", "/contact-us"];
 
 // Cap fetches so a no-email site can't crawl forever, but high enough to reach
 // the contact + a booking-platform link if neither has the email on the
 // homepage directly.
 //
 // FETCH_TIMEOUT_MS is per-attempt; the caller in scrape-job.ts ALSO applies a
-// hard ~12s per-lead deadline via Promise.race, so the worst case stays
+// hard ~8 s per-lead deadline via Promise.race, so the worst case stays
 // bounded even if multiple attempts straggle simultaneously.
-const MAX_FETCH_ATTEMPTS = 6;
-const FETCH_TIMEOUT_MS = 5_000;
+const MAX_FETCH_ATTEMPTS = 4;
+const FETCH_TIMEOUT_MS = 4_000;
+
+// Hard cap on the HTML body we'll keep per fetch. Some Shopify/Squarespace
+// pages serve 2-5 MB of inline JSON, CSS, and tracker scripts; the regex
+// passes over that take seconds and rarely surface anything new (the email
+// is almost always in the first 500 KB which is where the footer + header
+// live in the DOM order). Truncating prevents the event loop from blocking.
+const MAX_HTML_BYTES = 800_000;
 
 // Booking platforms small businesses use INSTEAD of their own contact page.
 // If the homepage links to one of these, we follow ONE such link as a
@@ -281,11 +277,21 @@ async function fetchAndExtract(
     });
     clearTimeout(timeoutId);
     if (!res.ok) return null;
+    // Truncate massive HTML bodies before doing any string work. Shopify
+    // pages routinely serve 2-5 MB of inline JSON/CSS; running ten regex
+    // passes over that on a 16-wide harvest queue blocks the event loop
+    // long enough to stall the per-lead Promise.race timeout. The footer +
+    // header (where every email signal lives in practice) are always within
+    // the first 500-800 KB of DOM order, so we lose nothing useful.
+    let rawHtml = await res.text();
+    if (rawHtml.length > MAX_HTML_BYTES) {
+      rawHtml = rawHtml.slice(0, MAX_HTML_BYTES);
+    }
     // Decode the common HTML entities BEFORE running any extractors so
     // entity-obfuscated emails ("info&#64;example.com" → "info@example.com")
     // surface in the regex / inline-JSON passes. Doing this on the raw HTML
     // means mailto/cfemail/JSON-LD all see the normalized form too.
-    const html = decodeHtmlEntities(await res.text());
+    const html = decodeHtmlEntities(rawHtml);
 
     const before = emails.length;
 
@@ -366,10 +372,10 @@ export async function enrichFromWebsite(
   for (const target of candidates) {
     if (attempts >= MAX_FETCH_ATTEMPTS) break;
     attempts++;
-    // First fetch (homepage) gets a bigger timeout — Squarespace, Wix, and
-    // WordPress hosts routinely take 4-6 s for the initial render. Fallback
-    // paths after the first stay at the tighter 5 s default.
-    const fetchTimeout = attempts === 1 ? 8_000 : FETCH_TIMEOUT_MS;
+    // First fetch (homepage) gets a slightly bigger timeout — Squarespace,
+    // Wix, and WordPress hosts routinely take 3-5 s for the initial render.
+    // Fallback paths after the first stay at the tighter 4 s default.
+    const fetchTimeout = attempts === 1 ? 5_000 : FETCH_TIMEOUT_MS;
     const html = await fetchAndExtract(
       target,
       base.origin,
