@@ -25,22 +25,6 @@ import { useToast } from "@/components/ui/Toast";
 
 // Drain an SSE response to completion without driving the UI — keeps the
 // connection open so the server finishes the run + refunds unused credits,
-// then runs onDone (e.g. refresh the campaign list).
-async function drainStream(res: Response, onDone: () => void) {
-  try {
-    const reader = res.body?.getReader();
-    if (!reader) return;
-    for (;;) {
-      const { done } = await reader.read();
-      if (done) break;
-    }
-  } catch {
-    /* connection closed / aborted — fine */
-  } finally {
-    onDone();
-  }
-}
-
 type Phase =
   | "launching"
   | "searching"
@@ -221,15 +205,15 @@ export function GenerateForm() {
         return;
       }
 
-      // Campaign created. Don't render progress inline — it runs in the
-      // background and shows live in the Lead campaigns list below. Keep the
-      // stream draining (without blocking the UI) so the server finishes and
-      // refunds unused credits, then refresh the list totals when it's done.
-      void drainStream(res, () => {
+      // Campaign created. The API now returns immediately (no SSE) and the
+      // worker keeps running in the background. We don't drain a stream
+      // anymore — credit refunds happen on the server when the worker
+      // finishes. Just poll for the credit balance once after a delay so
+      // the topbar picks up the refund without a manual refresh.
+      setTimeout(() => {
         router.refresh();
-        // Unused credits were just refunded — update the live balance.
         window.dispatchEvent(new Event("leadmachine:credits"));
-      });
+      }, 5_000);
 
       // Credits were reserved up front — reflect the charge in the topbar now.
       window.dispatchEvent(new Event("leadmachine:credits"));

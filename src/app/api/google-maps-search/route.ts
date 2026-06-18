@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   scrapeGoogleMaps,
@@ -210,57 +211,61 @@ async function proxyToWorker(opts: {
     return jsonError(msg, 502);
   }
 
-  const upstream = workerRes.body;
-  const stream = new ReadableStream({
-    async start(controller) {
-      const reader = upstream.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          controller.enqueue(value);
-        }
-      } catch (err) {
-        console.error("[lead-engine] stream pump error", err);
-      } finally {
-        // Worker stream ended. Read final scan_run state and refund any
-        // unused credits (we reserved `limit` up front).
-        if (plan !== "enterprise") {
-          const { data: run } = await supabase
-            .from("scan_runs")
-            .select("result_count,status")
-            .eq("id", scanRunId)
-            .maybeSingle();
-
-          const delivered = run?.result_count ?? 0;
-          const status = run?.status ?? "running";
-
-          // If the run failed, refund everything; otherwise refund the diff.
-          const refund =
-            status === "failed" ? limit : Math.max(0, limit - delivered);
-          if (refund > 0) {
-            await supabase
-              .rpc("refund_search_credits", { amount: refund })
-              .then(({ error }) => {
-                if (error) {
-                  console.error("[lead-engine] refund failed", error);
-                }
-              });
-          }
-        }
-        controller.close();
+  // Drain the worker stream in the BACKGROUND so the connection completes
+  // cleanly on the worker side AND we get to refund unused credits when
+  // it's done. The Vercel function returns immediately so the user's
+  // browser doesn't sit on a 60-300 s SSE connection — they get redirected
+  // to /user/jobs in ~200 ms and watch the run fill in via scan_runs polls.
+  //
+  // Why background-drain instead of just abandoning the request: if we
+  // close the upstream without reading it, the worker's res.write() will
+  // raise EPIPE and abort the scrape mid-flight. The drain is a no-op
+  // pump that just lets the worker finish.
+  void (async () => {
+    const reader = workerRes.body!.getReader();
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
       }
-    },
-  });
+    } catch (err) {
+      console.error("[lead-engine] background drain error", err);
+    } finally {
+      // Refund any unused portion of the up-front credit reservation.
+      // result_count is updated by the worker as it goes; reading it once
+      // the stream is done gives us the final delivered count.
+      if (plan !== "enterprise") {
+        const { data: run } = await supabase
+          .from("scan_runs")
+          .select("result_count,status")
+          .eq("id", scanRunId)
+          .maybeSingle();
 
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
+        const delivered = run?.result_count ?? 0;
+        const status = run?.status ?? "running";
+        const refund =
+          status === "failed" ? limit : Math.max(0, limit - delivered);
+        if (refund > 0) {
+          await supabase
+            .rpc("refund_search_credits", { amount: refund })
+            .then(({ error }) => {
+              if (error) console.error("[lead-engine] refund failed", error);
+            });
+        }
+      }
+    }
+  })();
+
+  // Acknowledge immediately. The frontend never read the SSE events anyway
+  // — it just redirects to /user/jobs and polls scan_runs. Returning JSON
+  // instead of SSE means the Vercel function completes in <1 s instead of
+  // sitting open for 60-300 s and racing the function timeout.
+  return NextResponse.json({
+    ok: true,
+    scanRunId,
+    // status echo so the existing GenerateForm submit handler can detect
+    // "accepted" without changing its expectations.
+    status: "running",
   });
 }
 
