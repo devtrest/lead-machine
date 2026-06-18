@@ -138,16 +138,169 @@ function walkJsonLd(node: unknown, emails: string[], phones: string[]): void {
   for (const key of Object.keys(obj)) walkJsonLd(obj[key], emails, phones);
 }
 
-// Email lives in the homepage footer or on the contact page. We check the
-// homepage first (footer / JSON-LD), then the contact-page variants, and stop
-// the moment we find a real email. If none is found, the lead gets NO email —
-// we never guess.
-const CONTACT_PATHS = ["", "/contact", "/contacts", "/contact-us"];
+// Email lives in the homepage footer, on the contact page, on an About/Team
+// page, OR (very common for spa/salon/restaurant) on the booking-platform
+// page linked from the homepage. We try paths in rough order of how likely
+// they are to contain the email, and stop the moment we find a real one.
+// If nothing is found, the lead gets NO email — we never guess.
+const CONTACT_PATHS = [
+  "",
+  "/contact",
+  "/contacts",
+  "/contact-us",
+  "/about",
+  "/about-us",
+  "/book",
+  "/booking",
+  "/reservations",
+  "/find-us",
+  "/get-in-touch",
+];
 
 // Cap fetches so a no-email site can't crawl forever, but high enough to reach
-// the contact page even if a path 404s.
-const MAX_FETCH_ATTEMPTS = 4;
+// the contact + a booking-platform link if neither has the email on the
+// homepage directly.
+const MAX_FETCH_ATTEMPTS = 6;
 const FETCH_TIMEOUT_MS = 7_000;
+
+// Booking platforms small businesses use INSTEAD of their own contact page.
+// If the homepage links to one of these, we follow ONE such link as a
+// last-resort fetch — the booking widget usually has the email/phone in
+// the embedded business profile.
+const BOOKING_HOST_PATTERNS = [
+  /\.setmore\.com/i,
+  /\.square\.site/i,
+  /\.squarespace-cdn\.com/i,
+  /squareup\.com\//i,
+  /book\.acuityscheduling\.com/i,
+  /calendly\.com/i,
+  /booksy\.com/i,
+  /fresha\.com/i,
+  /\.simplybook\./i,
+  /\.appointy\.com/i,
+];
+
+function findBookingLinks(html: string): string[] {
+  const out: string[] = [];
+  const re = /href\s*=\s*["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1].trim();
+    if (!/^https?:/i.test(href)) continue;
+    for (const pat of BOOKING_HOST_PATTERNS) {
+      if (pat.test(href)) {
+        out.push(href);
+        break;
+      }
+    }
+  }
+  return unique(out);
+}
+
+// Many widgets embed business contact info as inline JSON in <script> tags
+// without using JSON-LD. Setmore in particular includes the business email
+// inside `window.__INITIAL_STATE__` / config blobs. A loose regex over the
+// raw HTML catches these.
+function extractInlineJsonEmails(html: string): string[] {
+  const out: string[] = [];
+  const re = /"email"\s*:\s*"([^"]{3,100})"/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const candidate = m[1].trim().toLowerCase();
+    if (candidate.includes("@")) out.push(candidate);
+  }
+  return unique(out);
+}
+
+function extractMetaEmails(html: string): string[] {
+  const out: string[] = [];
+  // <meta property="og:email" content="..."> or
+  // <meta name="contact:email" content="...">
+  const re =
+    /<meta[^>]+(?:property|name)\s*=\s*["'](?:og:email|email|contact:email|business:email)["'][^>]+content\s*=\s*["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const v = m[1].trim().toLowerCase();
+    if (v.includes("@")) out.push(v);
+  }
+  return unique(out);
+}
+
+// Try one host variant of a fetch. Pulls every email signal out of the
+// returned HTML and pushes them onto the shared accumulators. Returns the
+// raw HTML so callers can inspect it further (e.g. look for booking links).
+async function fetchAndExtract(
+  target: string,
+  refererOrigin: string,
+  emails: string[],
+  phones: string[],
+  sourceUrls: string[]
+): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const res = await fetch(target, {
+      cache: "no-store",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "en-US,en;q=0.9",
+        referer: `${refererOrigin}/`,
+      },
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const before = emails.length;
+
+    // 1. mailto: / tel: hrefs — highest signal.
+    const fromHrefs = extractFromHrefs(html);
+    for (const e of fromHrefs.emails) emails.push(e.toLowerCase());
+    for (const p of fromHrefs.phones) phones.push(p);
+
+    // 2. Cloudflare-obfuscated emails (data-cfemail attrs).
+    const cfEmails = extractCfEmails(html);
+    for (const e of cfEmails) emails.push(e);
+
+    // 3. JSON-LD structured data (Schema.org Restaurant/Organization/etc).
+    const fromLd = extractJsonLdEmails(html);
+    for (const e of fromLd.emails) emails.push(e);
+    for (const p of fromLd.phones) phones.push(p);
+
+    // 4. og:email / business:email / contact:email meta tags.
+    for (const e of extractMetaEmails(html)) emails.push(e);
+
+    // 5. Inline JSON config blobs ("email":"..." in <script> tags).
+    //    Common in booking widgets (Setmore, Square) and SPA hydration data.
+    for (const e of extractInlineJsonEmails(html)) emails.push(e);
+
+    // 6. Plain text + unobfuscated regex pass.
+    const text = unobfuscate(stripMarkup(html));
+    const foundEmails = text.match(EMAIL_RE) ?? [];
+    for (const email of foundEmails) emails.push(email.toLowerCase());
+
+    const foundPhones = text.match(PHONE_RE) ?? [];
+    for (const rawPhone of foundPhones) {
+      const cleaned = rawPhone.replace(/[^\d+]/g, "");
+      if (cleaned.length >= 8 && cleaned.length <= 16) phones.push(cleaned);
+    }
+
+    if (emails.length > before) sourceUrls.push(target);
+    return html;
+  } catch {
+    /* network errors and timeouts are expected on a fraction of sites */
+    return null;
+  }
+}
+
+function hasGoodEmail(emails: string[]): boolean {
+  return unique(emails).filter(isLikelyRealEmail).length >= 1;
+}
 
 export async function enrichFromWebsite(
   websiteUrl: string,
@@ -171,72 +324,62 @@ export async function enrichFromWebsite(
   const phones: string[] = [];
   const sourceUrls: string[] = [];
   let attempts = 0;
+  let homepageHtml: string | null = null;
 
   for (const target of candidates) {
     if (attempts >= MAX_FETCH_ATTEMPTS) break;
     attempts++;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      const res = await fetch(target, {
-        cache: "no-store",
-        redirect: "follow",
-        signal: controller.signal,
-        headers: {
-          "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "accept-language": "en-US,en;q=0.9",
-          // A Referer makes our request look like a normal in-app
-          // navigation instead of a direct hit from a script.
-          referer: `${base.origin}/`,
-        },
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) continue;
-      const html = await res.text();
+    const html = await fetchAndExtract(
+      target,
+      base.origin,
+      emails,
+      phones,
+      sourceUrls
+    );
+    // Cache the first successful homepage response so we can mine it for
+    // booking-platform links if every contact path fails to surface an email.
+    if (target === candidates[0] && html) homepageHtml = html;
+    if (hasGoodEmail(emails)) break;
+  }
 
-      // 1. mailto: / tel: hrefs — highest signal.
-      const fromHrefs = extractFromHrefs(html);
-      for (const e of fromHrefs.emails) emails.push(e.toLowerCase());
-      for (const p of fromHrefs.phones) phones.push(p);
+  // Fallback A — if the apex domain didn't yield an email, try the www
+  // subdomain variant (or vice versa). Many small sites only configure SSL
+  // on one host.
+  if (!hasGoodEmail(emails) && attempts < MAX_FETCH_ATTEMPTS) {
+    const altHost = base.host.startsWith("www.")
+      ? base.host.slice(4)
+      : `www.${base.host}`;
+    const altUrl = `${base.protocol}//${altHost}${base.pathname}`;
+    attempts++;
+    const html = await fetchAndExtract(
+      altUrl,
+      `${base.protocol}//${altHost}`,
+      emails,
+      phones,
+      sourceUrls
+    );
+    if (!homepageHtml && html) homepageHtml = html;
+  }
 
-      // 2. Cloudflare-obfuscated emails (data-cfemail attrs).
-      const cfEmails = extractCfEmails(html);
-      for (const e of cfEmails) emails.push(e);
-
-      // 3. JSON-LD structured data (Schema.org Restaurant/Organization/etc).
-      const fromLd = extractJsonLdEmails(html);
-      for (const e of fromLd.emails) emails.push(e);
-      for (const p of fromLd.phones) phones.push(p);
-
-      // 4. Plain text + unobfuscated regex pass.
-      const text = unobfuscate(stripMarkup(html));
-      const foundEmails = text.match(EMAIL_RE) ?? [];
-      for (const email of foundEmails) emails.push(email.toLowerCase());
-
-      const foundPhones = text.match(PHONE_RE) ?? [];
-      for (const rawPhone of foundPhones) {
-        const cleaned = rawPhone.replace(/[^\d+]/g, "");
-        if (cleaned.length >= 8 && cleaned.length <= 16) phones.push(cleaned);
-      }
-
-      if (
-        foundEmails.length > 0 ||
-        fromHrefs.emails.length > 0 ||
-        cfEmails.length > 0 ||
-        fromLd.emails.length > 0
-      ) {
-        sourceUrls.push(target);
-      }
-
-      // Stop as soon as we have at least one real email — that's the goal for
-      // a lead, and it keeps enrichment fast. (Phones mostly come from the
-      // Places API already.)
-      if (unique(emails).filter(isLikelyRealEmail).length >= 1) break;
-    } catch {
-      /* network errors and timeouts are expected on a fraction of sites */
+  // Fallback B — many spas/salons/restaurants have a one-page marketing site
+  // that punts to a booking platform (Setmore, Square, Booksy, etc.) for
+  // everything. If the homepage links to such a platform AND we still don't
+  // have an email, crawl ONE such link.
+  if (
+    !hasGoodEmail(emails) &&
+    attempts < MAX_FETCH_ATTEMPTS &&
+    homepageHtml
+  ) {
+    const bookingLinks = findBookingLinks(homepageHtml);
+    if (bookingLinks.length > 0) {
+      attempts++;
+      await fetchAndExtract(
+        bookingLinks[0],
+        base.origin,
+        emails,
+        phones,
+        sourceUrls
+      );
     }
   }
 
