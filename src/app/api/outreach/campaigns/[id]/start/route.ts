@@ -29,9 +29,13 @@ export async function POST(_req: Request, ctx: { params: Params }) {
   if (!campaign) {
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
-  if (campaign.status === "active") {
-    return NextResponse.json({ error: "Already active" }, { status: 409 });
-  }
+  // Note: we used to refuse with 409 "Already active" here. That was wrong
+  // — it made the campaign UN-RECOVERABLE if it got stuck in the active-but-
+  // never-sending state (e.g. started outside send window with the old non-
+  // fast poke). Start is now idempotent: clicking it on an already-active
+  // campaign re-pokes the worker with fast mode + campaignId, so the user
+  // can unstick a campaign without having to Pause→Resume first.
+  const wasActive = campaign.status === "active";
 
   // Make sure at least one step + one prospect exist.
   const { count: stepCount } = await supabase
@@ -58,27 +62,31 @@ export async function POST(_req: Request, ctx: { params: Params }) {
 
   // Charge 1 credit per prospect that will receive the initial email.
   // Follow-ups (step 2+) are free for every plan. Enterprise is unmetered.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("plan")
-    .eq("id", user.id)
-    .maybeSingle();
-  const plan = (profile?.plan as string | null) ?? "starter";
-  if (plan !== "enterprise") {
-    const { data: reserved, error: rpcErr } = await supabase.rpc(
-      "reserve_search_credits",
-      { amount: prospectCount }
-    );
-    if (rpcErr) {
-      return NextResponse.json({ error: rpcErr.message }, { status: 400 });
-    }
-    if (!reserved) {
-      return NextResponse.json(
-        {
-          error: `Not enough credits. Starting this campaign needs ${prospectCount} (one per prospect for the initial email). Follow-ups are free.`,
-        },
-        { status: 402 }
+  // Skip the reservation when re-pokeing an already-active campaign — we
+  // already charged on the first Start; re-charging would double-bill.
+  if (!wasActive) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .maybeSingle();
+    const plan = (profile?.plan as string | null) ?? "starter";
+    if (plan !== "enterprise") {
+      const { data: reserved, error: rpcErr } = await supabase.rpc(
+        "reserve_search_credits",
+        { amount: prospectCount }
       );
+      if (rpcErr) {
+        return NextResponse.json({ error: rpcErr.message }, { status: 400 });
+      }
+      if (!reserved) {
+        return NextResponse.json(
+          {
+            error: `Not enough credits. Starting this campaign needs ${prospectCount} (one per prospect for the initial email). Follow-ups are free.`,
+          },
+          { status: 402 }
+        );
+      }
     }
   }
 
