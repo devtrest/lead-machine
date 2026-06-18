@@ -177,11 +177,11 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
     onEvent({ phase: "harvesting", count: 0, target: harvestable.length });
     const HARVEST_CONCURRENCY = 10;
     // Hard per-lead deadline. With the path expansion + booking-platform
-    // fallback, a no-email site can otherwise burn 6 fetches × 7s = 42s of
-    // worker time blocking a queue slot. 12s caps the worst case at roughly
-    // 1.5 × the time a healthy site needs, while still letting us land
-    // emails on most real sites (homepage hit usually returns in under 3s).
-    const PER_LEAD_BUDGET_MS = 12_000;
+    // fallback, a no-email site can otherwise burn many fetches blocking a
+    // queue slot. 18 s caps the worst case while still letting the homepage
+    // get its 8 s grace (Squarespace/Wix render slow) plus one or two
+    // fallback paths inside the budget.
+    const PER_LEAD_BUDGET_MS = 18_000;
     let cursor = 0;
     let done = 0;
     await Promise.all(

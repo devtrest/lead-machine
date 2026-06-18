@@ -1,6 +1,25 @@
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const PHONE_RE = /(?:\+\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)\d{3,4}[\s-]?\d{3,4}/g;
 
+// Decode the HTML entities that commonly hide @ . - in email addresses so
+// regex can still match them. Without this we miss emails like
+// "info&#64;example.com" or "info&commat;example.com" that some Squarespace,
+// Wix, and Wordpress themes generate as basic obfuscation.
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&commat;/gi, "@")
+    .replace(/&#0*64;/g, "@")
+    .replace(/&#x0*40;/gi, "@")
+    .replace(/&period;/gi, ".")
+    .replace(/&#0*46;/g, ".")
+    .replace(/&#x0*2e;/gi, ".")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lowbar;/gi, "_")
+    .replace(/&#0*45;/g, "-")
+    .replace(/&hyphen;/gi, "-");
+}
+
 const SPAM_EMAIL_PATTERNS = [
   /^example@/i,
   /^test@/i,
@@ -233,16 +252,20 @@ function extractMetaEmails(html: string): string[] {
 // Try one host variant of a fetch. Pulls every email signal out of the
 // returned HTML and pushes them onto the shared accumulators. Returns the
 // raw HTML so callers can inspect it further (e.g. look for booking links).
+//
+// timeoutMs lets callers give the homepage a longer budget than fallback
+// paths — Squarespace/Wix sites can take 4-6 s to respond.
 async function fetchAndExtract(
   target: string,
   refererOrigin: string,
   emails: string[],
   phones: string[],
-  sourceUrls: string[]
+  sourceUrls: string[],
+  timeoutMs: number = FETCH_TIMEOUT_MS
 ): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(target, {
       cache: "no-store",
       redirect: "follow",
@@ -258,7 +281,11 @@ async function fetchAndExtract(
     });
     clearTimeout(timeoutId);
     if (!res.ok) return null;
-    const html = await res.text();
+    // Decode the common HTML entities BEFORE running any extractors so
+    // entity-obfuscated emails ("info&#64;example.com" → "info@example.com")
+    // surface in the regex / inline-JSON passes. Doing this on the raw HTML
+    // means mailto/cfemail/JSON-LD all see the normalized form too.
+    const html = decodeHtmlEntities(await res.text());
 
     const before = emails.length;
 
@@ -314,10 +341,16 @@ export async function enrichFromWebsite(
   if (!root) return { emails: [], phones: [], sourceUrls: [] };
 
   const base = new URL(root);
+  // ALWAYS hit the domain root as the first candidate, regardless of whatever
+  // path Google Places stored against the lead (which can be a deep product
+  // page where the footer-email lives but harder to parse). Previously when
+  // path = "" we substituted base.pathname which meant a lead stored as
+  // "https://x.com/garden-supplies" would never crawl "https://x.com/".
+  // Footer + JSON-LD live on the root for almost every small-business site.
   const candidates = unique(
     CONTACT_PATHS.map((path) => {
       try {
-        return new URL(path || base.pathname, base).toString();
+        return new URL(path || "/", base).toString();
       } catch {
         return null;
       }
@@ -333,12 +366,17 @@ export async function enrichFromWebsite(
   for (const target of candidates) {
     if (attempts >= MAX_FETCH_ATTEMPTS) break;
     attempts++;
+    // First fetch (homepage) gets a bigger timeout — Squarespace, Wix, and
+    // WordPress hosts routinely take 4-6 s for the initial render. Fallback
+    // paths after the first stay at the tighter 5 s default.
+    const fetchTimeout = attempts === 1 ? 8_000 : FETCH_TIMEOUT_MS;
     const html = await fetchAndExtract(
       target,
       base.origin,
       emails,
       phones,
-      sourceUrls
+      sourceUrls,
+      fetchTimeout
     );
     // Cache the first successful homepage response so we can mine it for
     // booking-platform links if every contact path fails to surface an email.
