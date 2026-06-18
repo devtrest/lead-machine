@@ -175,14 +175,16 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
 
   if (harvestable.length > 0) {
     onEvent({ phase: "harvesting", count: 0, target: harvestable.length });
-    // 20 concurrent harvests + 8 s per-lead budget bounds the worst case at
-    //   250 leads × 8 s / 20 concurrent = ~100 s = ~1.7 min ceiling
-    // for a 250-lead campaign. The homepage fetch still gets its 5 s grace
-    // for slow Squarespace/Wix renders; the budget only bites on dead/
-    // Cloudflare-challenged hosts. 20 concurrent stays well under Railway
-    // container fd limits.
+    // 20 concurrent harvests + 12 s per-lead budget. Deeper crawl pipeline
+    // (homepage → 3 common paths → 2 smart-discovered links → depth-2 link
+    // → sitemap fallback) needs more time to actually run all stages on
+    // sites that defeat earlier signals. Worst case for 250 leads:
+    //   250 × 12 / 20 = ~150 s = ~2.5 min ceiling
+    // Real sites hit an email and break the loop well inside the budget;
+    // the 12 s only bites on completely dead sites that wouldn't surface
+    // an email anyway.
     const HARVEST_CONCURRENCY = 20;
-    const PER_LEAD_BUDGET_MS = 8_000;
+    const PER_LEAD_BUDGET_MS = 12_000;
     let cursor = 0;
     let done = 0;
     await Promise.all(

@@ -111,12 +111,19 @@ function unobfuscate(text: string): string {
 // at the actual navigation and follow whatever the SITE OWNER labeled as
 // 'Contact', 'About', 'Get in touch', etc. Catches unconventional URLs
 // like /reach-us, /about/contact, /the-team, /staff-directory.
+//
+// Multi-language coverage matters because a London-based currency
+// exchange might be labeled in Arabic, Polish, or Hindi for an immigrant
+// audience even when the URL is .co.uk. Same for European restaurants,
+// Asian salons, etc. The SIGNAL_WORDS list now covers the 15+ most
+// common languages we see in international scrapes.
 function findContactCandidateLinks(
   html: string,
   baseUrl: URL
 ): string[] {
   // Words that indicate "this link will probably have an email"
   const SIGNAL_WORDS = [
+    // English
     /contact/i,
     /reach\s*us/i,
     /get\s*in\s*touch/i,
@@ -135,6 +142,38 @@ function findContactCandidateLinks(
     /info\b/i,
     /find\s*us/i,
     /visit\s*us/i,
+    /imprint/i, // German legal page
+    // German
+    /kontakt/i,
+    /impressum/i,
+    /uber\s*uns/i,
+    /über\s*uns/i,
+    // Spanish
+    /contacto/i,
+    /contáctenos/i,
+    /sobre\s*nosotros/i,
+    /quienes\s*somos/i,
+    // French
+    /contactez/i,
+    /a\s*propos/i,
+    /à\s*propos/i,
+    /qui\s*sommes\s*nous/i,
+    /mentions\s*l[eé]gales/i,
+    // Italian
+    /contatti/i,
+    /chi\s*siamo/i,
+    // Portuguese
+    /contato/i,
+    /sobre/i,
+    // Dutch
+    /over\s*ons/i,
+    // Polish / Czech / Slovak
+    /kontakt/i, // also Polish
+    /o\s*nas/i,
+    // Arabic (transliterated link slugs)
+    /ittisaal/i,
+    // Russian (transliterated slugs)
+    /kontakty/i,
   ];
 
   const out: { url: string; score: number }[] = [];
@@ -256,16 +295,20 @@ function walkJsonLd(node: unknown, emails: string[], phones: string[]): void {
 
 // Email lives in the homepage footer, on the contact page, OR (common for
 // spa/salon/restaurant) on the booking-platform page linked from the
-// homepage. We add 2 retail-coverage paths because UK/US chain retailers
-// (shoe stores, clothing stores, electronics) often put corporate email
-// only on /help or /customer-service, never the homepage. Booking-platform
-// fallback still covers spas/salons.
+// homepage. We add retail-coverage paths because chain retailers put
+// corporate email only on /help or /customer-service, never the homepage.
+// EU legal-page paths are added because German (Impressum) and French
+// (Mentions légales) sites are LEGALLY REQUIRED to display an email here.
+// Booking-platform fallback still covers spas/salons.
 const CONTACT_PATHS = [
   "",
   "/contact",
   "/contact-us",
   "/help",
   "/customer-service",
+  "/impressum", // German legal page — email is mandatory by law
+  "/imprint",   // English version of Impressum
+  "/legal-notice", // French 'Mentions légales'
 ];
 
 // Cap fetches so a no-email site can't crawl forever, but high enough to reach
@@ -275,7 +318,7 @@ const CONTACT_PATHS = [
 // FETCH_TIMEOUT_MS is per-attempt; the caller in scrape-job.ts ALSO applies a
 // hard ~8 s per-lead deadline via Promise.race, so the worst case stays
 // bounded even if multiple attempts straggle simultaneously.
-const MAX_FETCH_ATTEMPTS = 6;
+const MAX_FETCH_ATTEMPTS = 8;
 const FETCH_TIMEOUT_MS = 4_000;
 
 // Hard cap on the HTML body we'll keep per fetch. Some Shopify/Squarespace
@@ -540,6 +583,83 @@ function hasGoodEmail(emails: string[]): boolean {
   return unique(emails).filter(isLikelyRealEmail).length >= 1;
 }
 
+// SITEMAP DISCOVERY — many CMS sites publish sitemap.xml listing every
+// public URL. We pull it, filter to URLs that contain contact/about/team-
+// signal words in the path, and return the top candidates. Way better hit
+// rate than path-guessing for sites with unusual URL structures (e.g.
+// /pages/our-team-and-mission, /info/legal/contact-form). Single fetch,
+// cheap regex, only runs as a fallback when the homepage + smart-link
+// discovery both failed.
+//
+// Each sitemap-style fetch has a tight 3 s timeout because the file is
+// rarely worth waiting for if it's slow — most sites that have it serve
+// it quickly. A failed sitemap fetch is a no-op, never bubbles an error.
+async function discoverSitemapContactUrls(
+  base: URL,
+  refererOrigin: string
+): Promise<string[]> {
+  const sitemapCandidates = [
+    `${base.origin}/sitemap.xml`,
+    `${base.origin}/sitemap_index.xml`,
+    `${base.origin}/sitemap-index.xml`,
+    `${base.origin}/wp-sitemap.xml`,
+  ];
+
+  for (const sitemapUrl of sitemapCandidates) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3_000);
+      const res = await fetch(sitemapUrl, {
+        cache: "no-store",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          accept: "application/xml,text/xml,*/*;q=0.9",
+          referer: `${refererOrigin}/`,
+        },
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) continue;
+      const xml = await res.text();
+
+      const urls: { url: string; score: number }[] = [];
+      const re = /<loc>([^<]+)<\/loc>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(xml)) !== null) {
+        const url = m[1].trim();
+        // Only same-host URLs; reject cross-domain entries.
+        try {
+          if (new URL(url).host !== base.host) continue;
+        } catch {
+          continue;
+        }
+        // Score by signal words in the path. Higher score = more likely to
+        // surface an email when fetched.
+        let score = 0;
+        if (/contact|kontakt|contacto|contatti/i.test(url)) score += 10;
+        if (/about|uber-uns|sobre|chi-siamo/i.test(url)) score += 5;
+        if (/team|staff|people|our-team/i.test(url)) score += 4;
+        if (/impressum|imprint|mentions-legales|legal-notice/i.test(url))
+          score += 6;
+        if (/reach|touch|help|support/i.test(url)) score += 3;
+        if (score === 0) continue;
+        urls.push({ url, score });
+      }
+
+      // Top 3, sorted by score desc.
+      return urls
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .map((u) => u.url);
+    } catch {
+      /* try next sitemap candidate */
+    }
+  }
+  return [];
+}
+
 export async function enrichFromWebsite(
   websiteUrl: string,
   maxItems = 4
@@ -594,13 +714,65 @@ export async function enrichFromWebsite(
   // SMART CONTACT-PAGE DISCOVERY — if our common-path guesses didn't land
   // an email but we have the homepage HTML, parse its navigation to find
   // whatever the site OWNER labeled 'Contact', 'About', 'Reach us', etc.
-  // and follow up to 2 of those links. Way better hit rate than guessing
-  // /contact-us for a site that uses /get-in-touch or /the-team.
+  // (in any of 15+ languages) and follow up to 2 of those links. Way
+  // better hit rate than guessing /contact-us for a site that uses
+  // /get-in-touch or /the-team.
+  let lastSmartHtml: string | null = null;
   if (!hasGoodEmail(emails) && homepageHtml && attempts < MAX_FETCH_ATTEMPTS) {
     const smartLinks = findContactCandidateLinks(homepageHtml, base);
     // Filter out paths we already tried.
     const triedSet = new Set(candidates);
     const fresh = smartLinks.filter((u) => !triedSet.has(u));
+    for (const link of fresh.slice(0, 2)) {
+      if (attempts >= MAX_FETCH_ATTEMPTS) break;
+      attempts++;
+      const html = await fetchAndExtract(
+        link,
+        base.origin,
+        emails,
+        phones,
+        sourceUrls
+      );
+      if (html) lastSmartHtml = html;
+      if (hasGoodEmail(emails)) break;
+    }
+  }
+
+  // DEPTH-2 — if the contact page we landed on had its OWN nav linking to
+  // a deeper sub-page (e.g. /contact links to /staff or /branches), follow
+  // ONE more level. Catches multi-location businesses (currency exchanges
+  // with branch pages, restaurant chains with location pages) and
+  // service businesses with a separate /team page.
+  if (
+    !hasGoodEmail(emails) &&
+    lastSmartHtml &&
+    attempts < MAX_FETCH_ATTEMPTS
+  ) {
+    const deeperLinks = findContactCandidateLinks(lastSmartHtml, base);
+    const tried = new Set(candidates);
+    const fresh = deeperLinks.filter((u) => !tried.has(u));
+    if (fresh.length > 0) {
+      attempts++;
+      await fetchAndExtract(
+        fresh[0],
+        base.origin,
+        emails,
+        phones,
+        sourceUrls
+      );
+    }
+  }
+
+  // SITEMAP FALLBACK — last-resort discovery. Many CMS sites publish
+  // sitemap.xml with every URL on the site. We pull it, filter to URLs
+  // with contact/about/team signal words in the PATH itself, and follow
+  // the top 1-2. Catches sites with unconventional URL structures like
+  // /pages/our-team-and-mission or /info/legal/contact-form that neither
+  // path-guessing nor link-parsing would surface.
+  if (!hasGoodEmail(emails) && attempts < MAX_FETCH_ATTEMPTS) {
+    const sitemapUrls = await discoverSitemapContactUrls(base, base.origin);
+    const tried = new Set(candidates);
+    const fresh = sitemapUrls.filter((u) => !tried.has(u));
     for (const link of fresh.slice(0, 2)) {
       if (attempts >= MAX_FETCH_ATTEMPTS) break;
       attempts++;
