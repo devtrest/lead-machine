@@ -97,23 +97,41 @@ export async function POST(_req: Request, ctx: { params: Params }) {
     .eq("campaign_id", id)
     .eq("status", "pending");
 
-  // Kick the worker so the first send goes out within seconds.
-  await pokeWorker();
+  // Kick the worker so the first send goes out within seconds. The first
+  // tick after Start runs in FAST mode — bypasses humanization delays,
+  // ignores send-window/daily-limit checks for this campaign — so the user
+  // sees prospects move out of 'pending' immediately. Follow-up steps go
+  // through normal ticks which DO respect window + humanization, so
+  // long-term cadence is unchanged.
+  //
+  // Without fast=true: most users hit "campaign active but all prospects
+  // pending" because their campaign was created with default UTC timezone +
+  // 9-5 window, and they Start it from a non-UTC timezone outside that
+  // window — the worker silently skips the campaign as out-of-window. From
+  // the user's perspective the system looks broken even though it's behaving
+  // as configured.
+  pokeWorker(id);
 
   return NextResponse.json({ ok: true });
 }
 
-async function pokeWorker(): Promise<void> {
+function pokeWorker(campaignId: string): void {
   const workerUrl = process.env.WORKER_URL?.trim();
   const workerToken = process.env.WORKER_TOKEN?.trim();
   if (!workerUrl || !workerToken) return;
-  try {
-    await fetch(`${workerUrl.replace(/\/$/, "")}/outreach/tick`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${workerToken}` },
-      // Fire-and-forget; we don't wait for the tick to finish.
-    });
-  } catch (err) {
+  // No await — truly fire-and-forget. The worker tick may run for tens of
+  // seconds (one SMTP send per prospect, even in fast mode), longer than
+  // Vercel Hobby's 30s function ceiling. Letting the request hang would
+  // make the UI think Start failed when it's actually progressing fine.
+  // The worker keeps running in the background regardless.
+  fetch(`${workerUrl.replace(/\/$/, "")}/outreach/tick`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${workerToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fast: true, campaignId }),
+  }).catch((err) => {
     console.error("[outreach/start] worker poke failed:", err);
-  }
+  });
 }
