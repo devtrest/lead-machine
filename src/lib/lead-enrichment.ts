@@ -159,11 +159,17 @@ function walkJsonLd(node: unknown, emails: string[], phones: string[]): void {
 
 // Email lives in the homepage footer, on the contact page, OR (common for
 // spa/salon/restaurant) on the booking-platform page linked from the
-// homepage. The first 2-3 paths land >95% of real emails in practice; the
-// long tail of /about, /booking, /reservations etc. mostly burned time
-// without finding new emails so they're removed. If a real lead needs them,
-// the booking-platform fallback below still kicks in for spas/salons.
-const CONTACT_PATHS = ["", "/contact", "/contact-us"];
+// homepage. We add 2 retail-coverage paths because UK/US chain retailers
+// (shoe stores, clothing stores, electronics) often put corporate email
+// only on /help or /customer-service, never the homepage. Booking-platform
+// fallback still covers spas/salons.
+const CONTACT_PATHS = [
+  "",
+  "/contact",
+  "/contact-us",
+  "/help",
+  "/customer-service",
+];
 
 // Cap fetches so a no-email site can't crawl forever, but high enough to reach
 // the contact + a booking-platform link if neither has the email on the
@@ -172,7 +178,7 @@ const CONTACT_PATHS = ["", "/contact", "/contact-us"];
 // FETCH_TIMEOUT_MS is per-attempt; the caller in scrape-job.ts ALSO applies a
 // hard ~8 s per-lead deadline via Promise.race, so the worst case stays
 // bounded even if multiple attempts straggle simultaneously.
-const MAX_FETCH_ATTEMPTS = 4;
+const MAX_FETCH_ATTEMPTS = 5;
 const FETCH_TIMEOUT_MS = 4_000;
 
 // Hard cap on the HTML body we'll keep per fetch. Some Shopify/Squarespace

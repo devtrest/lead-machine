@@ -9,6 +9,7 @@ import { supabase } from "./db.js";
 import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
+import { runReenrich } from "./reenrich-job.js";
 
 // Force IPv4 first for ALL DNS lookups in this process. Railway's egress
 // IPv6 routing to Google's edge (smtp.gmail.com, imap.gmail.com) is unreliable
@@ -154,6 +155,28 @@ app.post("/scrape", requireAuth, async (req, res) => {
     clearInterval(heartbeat);
     res.end();
   }
+});
+
+// Re-enrich endpoint — re-runs email harvesting against the existing leads
+// in a scan_run without re-scraping Google Places. Lets a user fill in
+// missing emails for a campaign that was enriched under an older / slower
+// code version. Fire-and-forget on the caller side: we kick off the work and
+// return immediately so the Vercel function doesn't time out at 30s on
+// large campaigns.
+app.post("/scrape/reenrich", requireAuth, async (req, res) => {
+  const body = (req.body ?? {}) as { scanRunId?: unknown; userId?: unknown };
+  const scanRunId =
+    typeof body.scanRunId === "string" ? body.scanRunId : null;
+  const userId = typeof body.userId === "string" ? body.userId : null;
+  if (!scanRunId || !userId) {
+    res.status(400).json({ error: "scanRunId and userId are required" });
+    return;
+  }
+  // Acknowledge fast — the actual work runs after the response is sent.
+  res.json({ ok: true, queued: true });
+  void runReenrich(scanRunId, userId).catch((err) => {
+    console.error("[/scrape/reenrich]", err);
+  });
 });
 
 // Outreach autopilot — manual trigger endpoint for testing + on-demand kicks.
