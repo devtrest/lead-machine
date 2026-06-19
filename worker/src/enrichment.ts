@@ -1,8 +1,12 @@
+import { findEmailViaApollo } from "./apollo.js";
+
 // Email + phone enrichment.
 //
-// Simple step-by-step pipeline (no guessing, no AI, no third-party APIs).
-// For every lead's website we try a small ordered list of pages, inspect the
-// raw HTML of each, and stop at the first page that yields a real email.
+// Simple step-by-step pipeline. For every lead's website we try a small
+// ordered list of pages, inspect the raw HTML of each, and stop at the
+// first page that yields a real email. If ALL pages fail to surface an
+// email, we hit Apollo's organizations/enrich endpoint as a Layer 2
+// fallback — but only if APOLLO_API_KEY is set in the worker env.
 //
 // Order:
 //   1. Homepage (also covers the footer — most small-business sites publish
@@ -281,6 +285,25 @@ export async function enrichFromWebsite(
     }
 
     sourceUrls.push(target);
+  }
+
+  // LAYER 2 — Apollo fallback. Only runs if all 7 site paths failed to
+  // surface an email AND APOLLO_API_KEY is set in the worker env. We pay
+  // 1 Apollo credit per call but ONLY for the leads our scraper couldn't
+  // help — leads that landed an email above never touch Apollo, so credit
+  // burn stays bounded by the number of difficult sites in a campaign.
+  // Apollo's organization/enrich endpoint returns generic corporate
+  // emails (info@brand.com, support@brand.com) when it has data on the
+  // domain; null otherwise. Free tier hit rate is ~15-30% on the
+  // difficult niches (chain retail, finance) and lower on niches our
+  // scraper already handles well.
+  const apolloEmail = await findEmailViaApollo(base.host);
+  if (apolloEmail) {
+    return {
+      emails: [apolloEmail],
+      phones: unique(allPhones).slice(0, maxItems),
+      sourceUrls: ["apollo.io"],
+    };
   }
 
   // No email found anywhere — return whatever phones we picked up.
