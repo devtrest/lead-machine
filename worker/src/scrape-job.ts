@@ -175,16 +175,16 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
 
   if (harvestable.length > 0) {
     onEvent({ phase: "harvesting", count: 0, target: harvestable.length });
-    // 20 concurrent harvests + 12 s per-lead budget. Deeper crawl pipeline
-    // (homepage → 3 common paths → 2 smart-discovered links → depth-2 link
-    // → sitemap fallback) needs more time to actually run all stages on
-    // sites that defeat earlier signals. Worst case for 250 leads:
-    //   250 × 12 / 20 = ~150 s = ~2.5 min ceiling
-    // Real sites hit an email and break the loop well inside the budget;
-    // the 12 s only bites on completely dead sites that wouldn't surface
-    // an email anyway.
+    // 20 concurrent harvests + 15 s per-lead budget. The simplified
+    // enrichment pipeline tries up to 7 paths in order (home → contact-us
+    // → contact → about-us → about → terms-and-conditions → terms) and
+    // stops at the first one that yields a real email. Per-fetch timeout
+    // is 5 s. Most leads land in 1-3 fetches (~5-10 s); only completely
+    // dead sites that won't surface an email anyway hit the 15 s ceiling.
+    //   Worst case for 250 leads: 250 × 15 / 20 = ~190 s = ~3 min
+    //   Typical case for 250 leads: ~60-90 s
     const HARVEST_CONCURRENCY = 20;
-    const PER_LEAD_BUDGET_MS = 12_000;
+    const PER_LEAD_BUDGET_MS = 15_000;
     let cursor = 0;
     let done = 0;
     await Promise.all(
