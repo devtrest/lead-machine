@@ -598,7 +598,10 @@ export function LeadsCrm() {
                       <td className="hidden md:table-cell px-4 py-3 truncate text-xs text-[var(--ink-muted)]">
                         {lead.category ?? "—"}
                       </td>
-                      <td className="px-4 py-3">
+                      <td
+                        className="px-4 py-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="flex flex-wrap gap-1.5">
                           {phones.length > 0 ? (
                             <span
@@ -617,6 +620,13 @@ export function LeadsCrm() {
                               <Mail className="h-3 w-3" />
                               {emails.length}
                             </span>
+                          ) : lead.website_url ? (
+                            // No email recorded for this lead, BUT we have a
+                            // website to crawl. Show a per-row 'Find email'
+                            // button that hits the same enrichment pipeline a
+                            // bulk re-enrich would. Cheaper and more targeted
+                            // than re-enriching the whole campaign.
+                            <FindEmailButton leadId={lead.id} />
                           ) : null}
                           {lead.website_url ? (
                             <span
@@ -969,6 +979,69 @@ function ReenrichButton({
         <Wand2 className="h-3.5 w-3.5" />
       )}
       Re-enrich emails
+    </button>
+  );
+}
+
+
+// Per-row 'Find email' button — shown on lead rows that don't have an email
+// yet but DO have a website. Hits /api/leads/[id]/reenrich which re-runs the
+// same enrichment pipeline against just that one lead's website. Cheaper and
+// faster than re-enriching the whole campaign for users who only care about
+// a few specific leads. No credit charge to the user (the lead was already
+// paid for); may charge 1 Apollo credit if APOLLO_API_KEY is set and we
+// fall through to Apollo's organizations/enrich endpoint.
+function FindEmailButton({ leadId }: { leadId: string }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function findEmail() {
+    setBusy(true);
+    const res = await fetch(`/api/leads/${leadId}/reenrich`, {
+      method: 'POST',
+    });
+    setBusy(false);
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      found?: boolean;
+      newEmails?: string[];
+      newPhones?: string[];
+      error?: string;
+      message?: string;
+    };
+    if (!res.ok || !json.ok) {
+      toast.error('Find email failed', json.error);
+      return;
+    }
+    if (json.found && json.newEmails && json.newEmails.length > 0) {
+      toast.success(`Found ${json.newEmails[0]}`, 'Saved to this lead');
+      router.refresh();
+    } else if (json.found && json.newPhones && json.newPhones.length > 0) {
+      toast.success('Found new phone', 'Saved to this lead');
+      router.refresh();
+    } else {
+      toast.error(
+        'No email found',
+        json.message ?? 'Site may be form-only or have no public email.'
+      );
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={findEmail}
+      disabled={busy}
+      title="Re-crawl this site for an email"
+      className="inline-flex items-center gap-1 rounded-md border border-dashed border-[var(--brand-200)] bg-[var(--brand-50)]/40 px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-700)] transition hover:border-solid hover:bg-[var(--brand-50)] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {busy ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Wand2 className="h-3 w-3" />
+      )}
+      Find email
     </button>
   );
 }
