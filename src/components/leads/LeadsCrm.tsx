@@ -626,7 +626,40 @@ export function LeadsCrm() {
                             // button that hits the same enrichment pipeline a
                             // bulk re-enrich would. Cheaper and more targeted
                             // than re-enriching the whole campaign.
-                            <FindEmailButton leadId={lead.id} />
+                            <FindEmailButton
+                              leadId={lead.id}
+                              onFound={(emails, phones) => {
+                                // Optimistic local-state update so the row
+                                // immediately shows the new email pill and
+                                // the Find email button disappears. Without
+                                // this, router.refresh() doesn't help because
+                                // the leads array lives in client state and
+                                // is fetched via /api/leads — server-side
+                                // refresh doesn't re-pull it.
+                                setLeads((prev) =>
+                                  prev.map((l) =>
+                                    l.id === lead.id
+                                      ? {
+                                          ...l,
+                                          lead_contacts: [
+                                            ...l.lead_contacts,
+                                            ...emails.map((e) => ({
+                                              email: e,
+                                              phone: null,
+                                              source_url: null,
+                                            })),
+                                            ...phones.map((p) => ({
+                                              phone: p,
+                                              email: null,
+                                              source_url: null,
+                                            })),
+                                          ],
+                                        }
+                                      : l
+                                  )
+                                );
+                              }}
+                            />
                           ) : null}
                           {lead.website_url ? (
                             <span
@@ -991,8 +1024,17 @@ function ReenrichButton({
 // a few specific leads. No credit charge to the user (the lead was already
 // paid for); may charge 1 Apollo credit if APOLLO_API_KEY is set and we
 // fall through to Apollo's organizations/enrich endpoint.
-function FindEmailButton({ leadId }: { leadId: string }) {
-  const router = useRouter();
+function FindEmailButton({
+  leadId,
+  onFound,
+}: {
+  leadId: string;
+  // Fires when the API returns new emails / phones. The parent uses this
+  // to optimistically update its local leads state so the row's pill
+  // changes from this button → an email count badge without waiting for a
+  // refetch.
+  onFound?: (emails: string[], phones: string[]) => void;
+}) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
 
@@ -1014,12 +1056,14 @@ function FindEmailButton({ leadId }: { leadId: string }) {
       toast.error('Find email failed', json.error);
       return;
     }
-    if (json.found && json.newEmails && json.newEmails.length > 0) {
-      toast.success(`Found ${json.newEmails[0]}`, 'Saved to this lead');
-      router.refresh();
-    } else if (json.found && json.newPhones && json.newPhones.length > 0) {
+    const newEmails = json.newEmails ?? [];
+    const newPhones = json.newPhones ?? [];
+    if (json.found && newEmails.length > 0) {
+      toast.success(`Found ${newEmails[0]}`, 'Saved to this lead');
+      onFound?.(newEmails, newPhones);
+    } else if (json.found && newPhones.length > 0) {
       toast.success('Found new phone', 'Saved to this lead');
-      router.refresh();
+      onFound?.([], newPhones);
     } else {
       toast.error(
         'No email found',
