@@ -760,6 +760,31 @@ is fast enough that 30 s is plenty.
   NOT added to the automated worker — it needs a logged-in cookie per run and a
   headless browser (the Puppeteer setup we removed), and FB blocks datacenter
   IPs; it only makes sense as a manual/local tool.
+- **June 2026 — container CA certs fix (production scrape returned nothing).**
+  The slim worker image had no CA store, so python's urllib failed every HTTPS
+  request with `CERTIFICATE_VERIFY_FAILED` and `find_emails.py` got empty HTML
+  — while Node's fetch (own CA roots) worked, masking it. Fix: `apt-get install
+  ca-certificates`; plus find_emails.py falls back to an unverified TLS context
+  on cert failure (also rescues sites with expired/self-signed certs). `/health`
+  gained a `python: { ok, version, scriptPresent }` block so a dead scraper is
+  one curl away from diagnosis.
+- **June 2026 — headless-Chromium Layer 2 (reverse the Puppeteer removal, for
+  email harvest only).** HTTP scraping can't see JS-rendered emails (premium
+  restaurants, agency SPAs inject contact info via JavaScript). Added
+  `worker/src/browser-scrape.ts`: a shared `puppeteer-core` + system-Chromium
+  instance (Dockerfile `apt-get install chromium`, `CHROMIUM_PATH`), hard
+  concurrency cap (`BROWSER_CONCURRENCY=3`) to bound memory, image/media/font
+  blocking, self-disables on launch failure (degrades to HTTP-only). Rendering
+  only — extraction reuses `find_emails.py --html` (stdin mode). Wired as
+  `enrichFromWebsite(url, max, { useBrowser })`: Layer 1 (HTTP) always runs,
+  Layer 2 runs only when Layer 1 found no email. Used in BOTH paths: the initial
+  lead-gen scrape runs a **time-boxed** browser phase B (default 120s via
+  `SCRAPE_BROWSER_BUDGET_MS`) on no-email leads after the fast HTTP harvest, so
+  generation stays bounded (Vercel proxy is 300s); the Email-finder re-enrich
+  runs it unbounded (concurrency 20→6, per-lead 18s→50s, stream deadline 25s→
+  240s) as the on-demand top-up. `/health/browser` reports Chromium readiness.
+  Needs ~1GB RAM; this is the one cloud-IP scrape that survives because these
+  business sites (unlike Google Maps) don't block datacenter IPs.
 
 ## Open work / followups
 

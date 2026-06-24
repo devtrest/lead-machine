@@ -5,6 +5,7 @@ import {
   type ProgressEvent as ScraperEvent,
 } from "./scraper.js";
 import { enrichFromWebsite, socialColumns } from "./enrichment.js";
+import { browserScrape } from "./browser-scrape.js";
 import { expandKeyword, expandLocation } from "./keywords.js";
 
 export type JobEvent =
@@ -185,6 +186,9 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
     //   Typical case for 250 leads: ~60-90 s
     const HARVEST_CONCURRENCY = 20;
     const PER_LEAD_BUDGET_MS = 15_000;
+    // Leads that already yielded an email in the fast HTTP pass — skipped by
+    // the browser phase below.
+    const emailedLeadIds = new Set<string>();
     let cursor = 0;
     let done = 0;
     await Promise.all(
@@ -213,6 +217,7 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
                 website_url: websiteUrl,
                 source_url: sourceUrl,
               });
+              emailedLeadIds.add(lead.id as string);
             }
             for (const phone of enriched.phones) {
               contactRows.push({
@@ -246,6 +251,78 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
         }
       })
     );
+
+    // Phase B — bounded headless-browser pass for the leads the HTTP scrape
+    // left without an email. JS-rendered sites (premium brands, SPAs) hide
+    // their email behind JavaScript, invisible to the HTTP pass; rendering the
+    // page surfaces it. TIME-BOXED so a big campaign can't stall generation —
+    // whatever isn't reached here, the Email finder tops up later on demand.
+    const browserTargets = harvestable.filter(
+      ({ lead }) => !emailedLeadIds.has(lead.id as string)
+    );
+    if (browserTargets.length > 0) {
+      const BROWSER_PHASE_BUDGET_MS =
+        Number(process.env.SCRAPE_BROWSER_BUDGET_MS) || 120_000;
+      const BROWSER_PHASE_CONCURRENCY = 4;
+      const PER_LEAD_BROWSER_MS = 30_000;
+      const phaseDeadline = Date.now() + BROWSER_PHASE_BUDGET_MS;
+      let bCursor = 0;
+      let bDone = 0;
+      await Promise.all(
+        Array.from({ length: BROWSER_PHASE_CONCURRENCY }).map(async () => {
+          while (true) {
+            if (Date.now() > phaseDeadline) break;
+            const i = bCursor++;
+            if (i >= browserTargets.length) break;
+            const { lead } = browserTargets[i];
+            const websiteUrl = lead.website_url as string;
+            try {
+              const b = await Promise.race([
+                browserScrape(websiteUrl, 3),
+                new Promise<never>((_, reject) =>
+                  setTimeout(
+                    () => reject(new Error("browser deadline")),
+                    PER_LEAD_BROWSER_MS
+                  )
+                ),
+              ]);
+              const sourceUrl = b.sourceUrls[0] ?? websiteUrl;
+              // Emails only — phase A already captured this lead's phones from
+              // the HTTP pass; re-adding here would duplicate phone rows.
+              for (const email of b.emails) {
+                contactRows.push({
+                  lead_id: lead.id as string,
+                  phone: null,
+                  email,
+                  website_url: websiteUrl,
+                  source_url: sourceUrl,
+                });
+              }
+              const socials = socialColumns(b.socials);
+              if (socials) {
+                await supabase
+                  .from("leads")
+                  .update(socials)
+                  .eq("id", lead.id as string)
+                  .then(
+                    () => {},
+                    () => {}
+                  );
+              }
+            } catch {}
+            // Keep the stream alive + bar full while the slow phase runs.
+            bDone += 1;
+            if (bDone % 3 === 0) {
+              onEvent({
+                phase: "harvesting",
+                count: harvestable.length,
+                target: harvestable.length,
+              });
+            }
+          }
+        })
+      );
+    }
   }
 
   if (contactRows.length > 0) {
