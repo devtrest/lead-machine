@@ -26,14 +26,6 @@ export default async function EmailFinderPage() {
     .order("started_at", { ascending: false })
     .limit(60);
 
-  // Pull every lead + contact once, then bucket by scan_run_id in JS (avoids
-  // an N+1 query per campaign) — same approach as the Prospect lists page.
-  const { data: leadsWithContacts } = await supabase
-    .from("leads")
-    .select("id,scan_run_id,website_url,lead_contacts(email)")
-    .eq("user_id", user!.id)
-    .limit(5000);
-
   type LeadRow = {
     id: string;
     scan_run_id: string;
@@ -41,18 +33,33 @@ export default async function EmailFinderPage() {
     lead_contacts: { email: string | null }[] | null;
   };
 
-  type Bucket = { websites: number; withEmail: number };
-  const bucketByRun = new Map<string, Bucket>();
-  for (const lead of (leadsWithContacts ?? []) as LeadRow[]) {
-    const b = bucketByRun.get(lead.scan_run_id) ?? {
-      websites: 0,
-      withEmail: 0,
-    };
-    const hasWebsite = Boolean(lead.website_url);
-    const hasEmail = (lead.lead_contacts ?? []).some((c) => c.email);
-    if (hasWebsite) b.websites += 1;
-    if (hasEmail) b.withEmail += 1;
-    bucketByRun.set(lead.scan_run_id, b);
+  // Page through EVERY lead + contact (a single .limit(5000) silently dropped
+  // the newest campaigns once an account grew past 5k leads — they showed
+  // "0 websites" and a disabled button). Bucket by scan_run_id in JS to avoid
+  // an N+1 query per campaign. PAGE_SIZE rows per round-trip, ordered so paging
+  // is stable; cap the loop as a runaway guard.
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 60; // up to 60k leads
+  const bucketByRun = new Map<string, { websites: number; withEmail: number }>();
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const from = page * PAGE_SIZE;
+    const { data, error } = await supabase
+      .from("leads")
+      .select("id,scan_run_id,website_url,lead_contacts(email)")
+      .eq("user_id", user!.id)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const lead of data as LeadRow[]) {
+      const b = bucketByRun.get(lead.scan_run_id) ?? {
+        websites: 0,
+        withEmail: 0,
+      };
+      if (lead.website_url) b.websites += 1;
+      if ((lead.lead_contacts ?? []).some((c) => c.email)) b.withEmail += 1;
+      bucketByRun.set(lead.scan_run_id, b);
+    }
+    if (data.length < PAGE_SIZE) break;
   }
 
   const lists: FinderList[] = ((runs ?? []) as Array<{
