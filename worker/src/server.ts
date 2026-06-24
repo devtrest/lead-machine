@@ -10,6 +10,11 @@ import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
 import { runReenrich } from "./reenrich-job.js";
+import { checkPython, type PythonHealth } from "./enrichment.js";
+
+// Bumped whenever the worker's scraping/enrichment behavior changes, so a
+// single `curl /health` confirms which build Railway is actually running.
+const BUILD_MARKER = "2026-06-25 python-scraper+socials";
 
 // Force IPv4 first for ALL DNS lookups in this process. Railway's egress
 // IPv6 routing to Google's edge (smtp.gmail.com, imap.gmail.com) is unreliable
@@ -51,8 +56,35 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Cached at startup so routine Railway health pings don't spawn python every
+// time. The email harvest is dead in the water if python isn't runnable, so
+// we surface it here rather than discovering it lead-by-lead in production.
+let pythonHealth: PythonHealth | null = null;
+checkPython()
+  .then((h) => {
+    pythonHealth = h;
+    if (h.ok) {
+      console.log(
+        `[worker] email scraper ready — ${h.version ?? "python"} (${h.bin})`
+      );
+    } else {
+      console.error(
+        `[worker] EMAIL SCRAPER UNAVAILABLE — ${h.error}. bin=${h.bin} ` +
+          `scriptPresent=${h.scriptPresent}. Email harvesting will return ` +
+          `nothing until python3 + find_emails.py are present in the image.`
+      );
+    }
+  })
+  .catch(() => {});
+
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, activeScrapes, maxScrapes: MAX_CONCURRENT_SCRAPES });
+  res.json({
+    ok: true,
+    build: BUILD_MARKER,
+    python: pythonHealth ?? { ok: null, pending: true },
+    activeScrapes,
+    maxScrapes: MAX_CONCURRENT_SCRAPES,
+  });
 });
 
 // Bound how many scrapes run at once on this instance so a burst of campaigns

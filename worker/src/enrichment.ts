@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 // Email + phone enrichment.
@@ -88,6 +89,23 @@ export function socialColumns(socials: Socials): LeadSocialColumns | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+// If the Python subprocess can't even start (binary missing, script missing),
+// EVERY lead silently returns empty and the whole harvest looks like it found
+// nothing. That's invisible without a log, so we surface the first failure
+// loudly (once) — the signature symptom of a Railway image that didn't install
+// python3. checkPython() (below, surfaced on /health) is the proactive version.
+let spawnFailureLogged = false;
+function logSpawnFailureOnce(detail: string) {
+  if (spawnFailureLogged) return;
+  spawnFailureLogged = true;
+  console.error(
+    `[enrichment] python subprocess failed to start (${detail}). ` +
+      `bin=${PYTHON_BIN} script=${SCRIPT_PATH}. ` +
+      `Every email lookup will return empty until this is fixed — is python3 ` +
+      `installed in the image and is find_emails.py present?`
+  );
+}
+
 // Main entrypoint. Hands the website URL to find_emails.py and returns its
 // {emails, phones, sourceUrls} result. Resolves to an empty result on any
 // failure (bad URL, missing python, crash, timeout) — enrichment is always
@@ -111,7 +129,8 @@ export async function enrichFromWebsite(
       child = spawn(PYTHON_BIN, [SCRIPT_PATH, websiteUrl, String(maxItems)], {
         stdio: ["ignore", "pipe", "ignore"],
       });
-    } catch {
+    } catch (err) {
+      logSpawnFailureOnce(err instanceof Error ? err.message : "spawn threw");
       finish(EMPTY);
       return;
     }
@@ -125,8 +144,9 @@ export async function enrichFromWebsite(
     child.stdout?.on("data", (chunk) => {
       out += chunk.toString();
     });
-    child.on("error", () => {
+    child.on("error", (err) => {
       clearTimeout(timer);
+      logSpawnFailureOnce(err instanceof Error ? err.message : "error event");
       finish(EMPTY);
     });
     child.on("close", () => {
@@ -142,6 +162,89 @@ export async function enrichFromWebsite(
       } catch {
         finish(EMPTY);
       }
+    });
+  });
+}
+
+export type PythonHealth = {
+  ok: boolean;
+  bin: string;
+  version?: string;
+  scriptPresent: boolean;
+  scriptPath: string;
+  error?: string;
+};
+
+// Proactive self-check used by /health: can we actually run the scraper in
+// this environment? Confirms the interpreter launches (`python3 --version`)
+// and that find_emails.py shipped into the image. Lets us diagnose a broken
+// production harvest from a single curl instead of guessing.
+export async function checkPython(): Promise<PythonHealth> {
+  const scriptPresent = existsSync(SCRIPT_PATH);
+  return new Promise<PythonHealth>((resolve) => {
+    let settled = false;
+    const done = (h: PythonHealth) => {
+      if (settled) return;
+      settled = true;
+      resolve(h);
+    };
+
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(PYTHON_BIN, ["--version"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      done({
+        ok: false,
+        bin: PYTHON_BIN,
+        scriptPresent,
+        scriptPath: SCRIPT_PATH,
+        error: err instanceof Error ? err.message : "spawn threw",
+      });
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      done({
+        ok: false,
+        bin: PYTHON_BIN,
+        scriptPresent,
+        scriptPath: SCRIPT_PATH,
+        error: "timeout",
+      });
+    }, 5_000);
+
+    let out = "";
+    child.stdout?.on("data", (c) => (out += c.toString()));
+    child.stderr?.on("data", (c) => (out += c.toString())); // some pythons print version to stderr
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      done({
+        ok: false,
+        bin: PYTHON_BIN,
+        scriptPresent,
+        scriptPath: SCRIPT_PATH,
+        error: err instanceof Error ? err.message : "error event",
+      });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const version = out.trim() || undefined;
+      done({
+        ok: code === 0 && scriptPresent,
+        bin: PYTHON_BIN,
+        version,
+        scriptPresent,
+        scriptPath: SCRIPT_PATH,
+        error:
+          code === 0
+            ? scriptPresent
+              ? undefined
+              : "find_emails.py missing"
+            : `python exited ${code}`,
+      });
     });
   });
 }
