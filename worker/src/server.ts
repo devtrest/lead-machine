@@ -4,18 +4,13 @@ import express, {
   type NextFunction,
 } from "express";
 import dns from "node:dns";
-import { spawn } from "node:child_process";
 import { runScrapeJob, type JobEvent } from "./scrape-job.js";
 import { supabase } from "./db.js";
 import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
 import { runReenrich } from "./reenrich-job.js";
-import {
-  checkPython,
-  enrichFromWebsite,
-  type PythonHealth,
-} from "./enrichment.js";
+import { checkPython, type PythonHealth } from "./enrichment.js";
 
 // Bumped whenever the worker's scraping/enrichment behavior changes, so a
 // single `curl /health` confirms which build Railway is actually running.
@@ -90,88 +85,6 @@ app.get("/health", (_req, res) => {
     activeScrapes,
     maxScrapes: MAX_CONCURRENT_SCRAPES,
   });
-});
-
-// TEMP DIAGNOSTIC — proves whether this container's egress IP can actually
-// reach + scrape a normal website. Runs a raw fetch AND the full scraper on a
-// fixed known-good URL (luminoclinic.com publishes its email on the homepage),
-// so a single curl distinguishes "datacenter IP is blocked" (status 403 /
-// challenge / 0 bytes) from "fetch works but scrape logic missed it". Fixed
-// URL only — no arbitrary input, so no SSRF surface. Remove once diagnosed.
-app.get("/health/scrape", async (_req, res) => {
-  const testUrl = "https://luminoclinic.com/";
-  const started = Date.now();
-  const probe: Record<string, unknown> = { testUrl };
-
-  try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 8_000);
-    const r = await fetch(testUrl, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-          "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-    });
-    clearTimeout(t);
-    const body = await r.text();
-    probe.rawFetch = {
-      status: r.status,
-      bytes: body.length,
-      challenge:
-        /Just a moment\.\.\.|challenges\.cloudflare\.com|Checking your browser/i.test(
-          body
-        ),
-      snippet: body.slice(0, 160).replace(/\s+/g, " "),
-    };
-  } catch (err) {
-    probe.rawFetch = {
-      error: err instanceof Error ? err.message : "fetch failed",
-    };
-  }
-
-  try {
-    probe.scraper = await enrichFromWebsite(testUrl, 4);
-  } catch (err) {
-    probe.scraper = { error: err instanceof Error ? err.message : "scrape failed" };
-  }
-
-  // Raw python urllib attempt so we see the EXACT exception find_emails.py
-  // swallows (e.g. SSLCertVerificationError = missing CA certs in the image).
-  probe.pythonFetch = await new Promise((resolve) => {
-    const code =
-      "import sys,urllib.request\n" +
-      "try:\n" +
-      " r=urllib.request.urlopen('https://luminoclinic.com/',timeout=8)\n" +
-      " sys.stdout.write('OK status=%s bytes=%d' % (getattr(r,'status','?'), len(r.read())))\n" +
-      "except Exception as e:\n" +
-      " sys.stdout.write('ERR %s: %s' % (type(e).__name__, e))\n";
-    const bin = process.env.PYTHON_BIN || "python3";
-    let child;
-    try {
-      child = spawn(bin, ["-c", code], { stdio: ["ignore", "pipe", "pipe"] });
-    } catch (err) {
-      resolve({ spawnError: err instanceof Error ? err.message : "spawn" });
-      return;
-    }
-    let out = "";
-    const t = setTimeout(() => child.kill("SIGKILL"), 12_000);
-    child.stdout?.on("data", (c) => (out += c.toString()));
-    child.stderr?.on("data", (c) => (out += c.toString()));
-    child.on("close", () => {
-      clearTimeout(t);
-      resolve(out.trim() || "(no output)");
-    });
-    child.on("error", (err) =>
-      resolve({ error: err instanceof Error ? err.message : "err" })
-    );
-  });
-
-  probe.elapsedMs = Date.now() - started;
-  res.json(probe);
 });
 
 // Bound how many scrapes run at once on this instance so a burst of campaigns
