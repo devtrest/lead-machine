@@ -15,6 +15,7 @@ import {
   ChevronDown,
   CreditCard,
   Mail,
+  MailSearch,
   AtSign,
   Inbox,
 } from "lucide-react";
@@ -58,6 +59,11 @@ const navSections: NavSection[] = [
         href: "/user/leads",
         label: "Prospect lists",
         icon: <Users className="h-4 w-4" />,
+      },
+      {
+        href: "/user/email-finder",
+        label: "Email finder",
+        icon: <MailSearch className="h-4 w-4" />,
       },
     ],
   },
