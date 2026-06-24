@@ -10,7 +10,11 @@ import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
 import { runReenrich } from "./reenrich-job.js";
-import { checkPython, type PythonHealth } from "./enrichment.js";
+import {
+  checkPython,
+  enrichFromWebsite,
+  type PythonHealth,
+} from "./enrichment.js";
 
 // Bumped whenever the worker's scraping/enrichment behavior changes, so a
 // single `curl /health` confirms which build Railway is actually running.
@@ -85,6 +89,57 @@ app.get("/health", (_req, res) => {
     activeScrapes,
     maxScrapes: MAX_CONCURRENT_SCRAPES,
   });
+});
+
+// TEMP DIAGNOSTIC — proves whether this container's egress IP can actually
+// reach + scrape a normal website. Runs a raw fetch AND the full scraper on a
+// fixed known-good URL (luminoclinic.com publishes its email on the homepage),
+// so a single curl distinguishes "datacenter IP is blocked" (status 403 /
+// challenge / 0 bytes) from "fetch works but scrape logic missed it". Fixed
+// URL only — no arbitrary input, so no SSRF surface. Remove once diagnosed.
+app.get("/health/scrape", async (_req, res) => {
+  const testUrl = "https://luminoclinic.com/";
+  const started = Date.now();
+  const probe: Record<string, unknown> = { testUrl };
+
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 8_000);
+    const r = await fetch(testUrl, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    clearTimeout(t);
+    const body = await r.text();
+    probe.rawFetch = {
+      status: r.status,
+      bytes: body.length,
+      challenge:
+        /Just a moment\.\.\.|challenges\.cloudflare\.com|Checking your browser/i.test(
+          body
+        ),
+      snippet: body.slice(0, 160).replace(/\s+/g, " "),
+    };
+  } catch (err) {
+    probe.rawFetch = {
+      error: err instanceof Error ? err.message : "fetch failed",
+    };
+  }
+
+  try {
+    probe.scraper = await enrichFromWebsite(testUrl, 4);
+  } catch (err) {
+    probe.scraper = { error: err instanceof Error ? err.message : "scrape failed" };
+  }
+
+  probe.elapsedMs = Date.now() - started;
+  res.json(probe);
 });
 
 // Bound how many scrapes run at once on this instance so a burst of campaigns
