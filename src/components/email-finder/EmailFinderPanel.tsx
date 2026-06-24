@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -168,9 +168,29 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
+  // Live crawl progress (done / total sites) while a scrape is streaming.
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
+  // Emails found so far this run — drives the live count-down + coverage bar.
+  const [found, setFound] = useState(0);
+
+  // When fresh server data arrives (after router.refresh resolves), the live
+  // overrides are baked into list.* — drop them so we show the server truth
+  // without flashing the pre-scrape numbers.
+  useEffect(() => {
+    setFound(0);
+    setProg(null);
+  }, [list.missing, list.withEmail]);
+
+  // Apply live progress on top of the server snapshot.
+  const liveWithEmail = list.withEmail + found;
+  const liveMissing = Math.max(0, list.missing - found);
   const coverage =
     list.websites > 0
-      ? Math.round((list.withEmail / list.websites) * 100)
+      ? Math.min(100, Math.round((liveWithEmail / list.websites) * 100))
+      : 0;
+  const crawlPct =
+    prog && prog.total > 0
+      ? Math.min(100, Math.round((prog.done / prog.total) * 100))
       : 0;
 
   async function scrape() {
@@ -191,43 +211,88 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
       return;
     }
     setBusy(true);
+    setDone(false);
+    setFound(0);
+    setProg({ done: 0, total: list.missing });
+
+    let final: {
+      newEmails?: number;
+      attempted?: number;
+      remaining?: number;
+    } | null = null;
+
     try {
-      const res = await fetch(`/api/scan/runs/${list.id}/reenrich`, {
+      const res = await fetch(`/api/scan/runs/${list.id}/reenrich/stream`, {
         method: "POST",
       });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        attempted?: number;
-        newEmails?: number;
-        remaining?: number;
-        error?: string;
-      };
-      if (!res.ok || !json.ok) {
-        toast.error("Couldn't scrape emails", json.error);
+      if (!res.ok || !res.body) {
+        toast.error("Couldn't scrape emails", `Server returned ${res.status}`);
+        setBusy(false);
+        setProg(null);
         return;
       }
+
+      // Parse the SSE stream frame by frame.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done: streamDone, value } = await reader.read();
+        if (streamDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          const dataLine = frame
+            .split("\n")
+            .find((l) => l.startsWith("data:"));
+          if (!dataLine) continue;
+          const payload = dataLine.slice(5).trim();
+          if (!payload) continue;
+          let evt: {
+            phase?: string;
+            done?: number;
+            total?: number;
+            newEmails?: number;
+            attempted?: number;
+            remaining?: number;
+            message?: string;
+          };
+          try {
+            evt = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+          if (evt.phase === "progress") {
+            setProg({ done: evt.done ?? 0, total: evt.total ?? list.missing });
+            setFound(evt.newEmails ?? 0);
+          } else if (evt.phase === "done") {
+            final = evt;
+            setFound(evt.newEmails ?? 0);
+          } else if (evt.phase === "error") {
+            throw new Error(evt.message || "Scrape failed");
+          }
+        }
+      }
+
       setDone(true);
+      const f = final?.newEmails ?? found;
+      const attempted = final?.attempted ?? 0;
+      const remaining = final?.remaining ?? 0;
 
-      const found = json.newEmails ?? 0;
-      const attempted = json.attempted ?? 0;
-      const remaining = json.remaining ?? 0;
-
-      if (found > 0) {
+      if (f > 0) {
         toast.success(
-          `Found ${found} new email${found === 1 ? "" : "s"}`,
+          `Found ${f} new email${f === 1 ? "" : "s"}`,
           remaining > 0
             ? `${remaining} site${remaining === 1 ? "" : "s"} left — click again to continue`
-            : "Open the list to see them"
+            : "Saved to your leads"
         );
       } else if (remaining > 0) {
-        // Ran out of the time budget before finishing — not "no emails".
         toast.success(
           "Still working…",
           `${remaining} site${remaining === 1 ? "" : "s"} left — click again to continue`
         );
       } else {
-        // Finished the whole list, found nothing new — these sites don't
-        // publish an email (contact-form only / JS-rendered / protected).
         toast.success(
           "No new emails found",
           attempted > 0
@@ -238,9 +303,10 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
       router.refresh();
     } catch (err) {
       toast.error(
-        "Couldn't start email scrape",
+        "Couldn't scrape emails",
         err instanceof Error ? err.message : undefined
       );
+      setProg(null);
     } finally {
       setBusy(false);
     }
@@ -275,29 +341,49 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
         </Link>
       </div>
 
-      {/* Coverage bar */}
-      <div className="mt-4">
-        <div className="flex items-center justify-between text-[11px] text-[var(--ink-muted)]">
-          <span className="inline-flex items-center gap-1">
-            <Globe className="h-3 w-3" />
-            {list.websites} websites
-          </span>
-          <span className="font-semibold tabular-nums text-[var(--ink-strong)]">
-            {coverage}% have email
-          </span>
+      {/* While scraping: show live crawl progress. Idle: show email coverage. */}
+      {busy ? (
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-[11px] text-[var(--ink-muted)]">
+            <span className="inline-flex items-center gap-1 font-medium text-[var(--brand-700)]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Crawling {prog?.done ?? 0}/{prog?.total ?? list.missing}
+            </span>
+            <span className="font-semibold tabular-nums text-[var(--ink-strong)]">
+              {found} found
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+            <div
+              className="h-full rounded-full bg-[var(--brand-500)] transition-[width] duration-300"
+              style={{ width: `${crawlPct}%` }}
+            />
+          </div>
         </div>
-        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
-          <div
-            className="h-full rounded-full bg-[var(--brand-500)] transition-[width] duration-500"
-            style={{ width: `${coverage}%` }}
-          />
+      ) : (
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-[11px] text-[var(--ink-muted)]">
+            <span className="inline-flex items-center gap-1">
+              <Globe className="h-3 w-3" />
+              {list.websites} websites
+            </span>
+            <span className="font-semibold tabular-nums text-[var(--ink-strong)]">
+              {coverage}% have email
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
+            <div
+              className="h-full rounded-full bg-[var(--brand-500)] transition-[width] duration-500"
+              style={{ width: `${coverage}%` }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-1.5">
           <span className="text-2xl font-semibold tabular-nums text-[var(--ink-strong)]">
-            {list.missing.toLocaleString()}
+            {liveMissing.toLocaleString()}
           </span>
           <span className="text-xs text-[var(--ink-muted)]">
             without email
@@ -307,11 +393,11 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
         <button
           type="button"
           onClick={scrape}
-          disabled={busy || list.missing === 0}
+          disabled={busy || liveMissing === 0}
           title={
-            list.missing === 0
+            liveMissing === 0
               ? "Every lead with a website already has an email"
-              : `Scrape emails for ${list.missing} leads`
+              : `Scrape emails for ${liveMissing} leads`
           }
           className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -322,7 +408,7 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
           ) : (
             <MailSearch className="h-3.5 w-3.5" />
           )}
-          {busy ? "Scraping…" : list.missing === 0 ? "All found" : "Scrape emails"}
+          {busy ? "Scraping…" : liveMissing === 0 ? "All found" : "Scrape emails"}
         </button>
       </div>
     </motion.div>

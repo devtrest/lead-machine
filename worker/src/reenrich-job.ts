@@ -39,7 +39,10 @@ const PER_LEAD_BUDGET_MS = 18_000;
 export async function runReenrich(
   scanRunId: string,
   userId: string,
-  opts?: { deadlineMs?: number }
+  opts?: {
+    deadlineMs?: number;
+    onProgress?: (p: { done: number; total: number; newEmails: number }) => void;
+  }
 ): Promise<ReenrichResult> {
   // Optional overall wall-clock budget. When the caller waits on the result
   // synchronously (the Vercel route relays the count to the user), we stop
@@ -88,6 +91,10 @@ export async function runReenrich(
     return true;
   });
 
+  // Emit an initial frame so a streaming caller can size its progress bar
+  // before the first site finishes crawling.
+  opts?.onProgress?.({ done: 0, total: targets.length, newEmails: 0 });
+
   if (targets.length === 0) {
     return { attempted: 0, newEmails: 0, newPhones: 0, skipped, remaining: 0 };
   }
@@ -96,6 +103,7 @@ export async function runReenrich(
     `[reenrich] scan_run=${scanRunId} re-harvesting ${targets.length} leads (${skipped} already had emails)`
   );
 
+  let completed = 0;
   let cursor = 0;
   await Promise.all(
     Array.from({ length: HARVEST_CONCURRENCY }).map(async () => {
@@ -171,6 +179,13 @@ export async function runReenrich(
           }
         } catch {
           /* per-lead deadline / network error — silent, move on */
+        } finally {
+          completed += 1;
+          opts?.onProgress?.({
+            done: completed,
+            total: targets.length,
+            newEmails,
+          });
         }
       }
     })

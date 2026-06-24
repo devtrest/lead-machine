@@ -168,7 +168,11 @@ app.post("/scrape", requireAuth, async (req, res) => {
 // If a list is too big to finish inside the budget, the leftover count comes
 // back as `remaining` and the user clicks again to continue.
 app.post("/scrape/reenrich", requireAuth, async (req, res) => {
-  const body = (req.body ?? {}) as { scanRunId?: unknown; userId?: unknown };
+  const body = (req.body ?? {}) as {
+    scanRunId?: unknown;
+    userId?: unknown;
+    stream?: unknown;
+  };
   const scanRunId =
     typeof body.scanRunId === "string" ? body.scanRunId : null;
   const userId = typeof body.userId === "string" ? body.userId : null;
@@ -176,6 +180,52 @@ app.post("/scrape/reenrich", requireAuth, async (req, res) => {
     res.status(400).json({ error: "scanRunId and userId are required" });
     return;
   }
+
+  // Streaming path — the Email finder UI wants live progress (decrementing
+  // count + progress bar). Emit one SSE event per crawled site.
+  if (body.stream === true) {
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const send = (event: unknown) => {
+      try {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      } catch {
+        /* response closed */
+      }
+    };
+    // Heartbeat so intermediaries don't close an idle stream during a slow
+    // site crawl where no progress event fires for a while.
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(": heartbeat\n\n");
+      } catch {
+        /* response closed */
+      }
+    }, 15_000);
+
+    try {
+      const result = await runReenrich(scanRunId, userId, {
+        deadlineMs: 25_000,
+        onProgress: (p) => send({ phase: "progress", ...p }),
+      });
+      send({ phase: "done", ...result });
+    } catch (err) {
+      send({
+        phase: "error",
+        message: err instanceof Error ? err.message : "Re-enrich failed",
+      });
+    } finally {
+      clearInterval(heartbeat);
+      res.end();
+    }
+    return;
+  }
+
+  // Non-streaming path — run with the same budget and return counts as JSON.
   try {
     const result = await runReenrich(scanRunId, userId, { deadlineMs: 25_000 });
     res.json({ ok: true, ...result });

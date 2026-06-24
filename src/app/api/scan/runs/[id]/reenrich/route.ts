@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { enrichFromWebsite } from "@/lib/lead-enrichment";
+import { harvestRunInProcess } from "@/lib/reenrich-inprocess";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -105,7 +105,7 @@ export async function POST(_req: Request, ctx: { params: Params }) {
 
   // Dev / no-worker path — harvest in-process and return the counts.
   try {
-    const result = await runInProcessReenrich(supabase, id, user.id);
+    const result = await harvestRunInProcess(supabase, id, user.id);
     return NextResponse.json({ ok: true, queued: false, ...result });
   } catch (err) {
     return NextResponse.json(
@@ -115,132 +115,4 @@ export async function POST(_req: Request, ctx: { params: Params }) {
       { status: 500 }
     );
   }
-}
-
-type ReenrichResult = {
-  attempted: number;
-  newEmails: number;
-  newPhones: number;
-  skipped: number;
-  remaining: number;
-};
-
-// In-process mirror of the worker's runReenrich (worker/src/reenrich-job.ts):
-// load every lead in the run with a website, skip the ones that already have
-// an email, and re-run enrichFromWebsite over the rest — inserting any new
-// emails/phones into lead_contacts. No credits are charged.
-async function runInProcessReenrich(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  scanRunId: string,
-  userId: string
-): Promise<ReenrichResult> {
-  const { data: leads, error } = await supabase
-    .from("leads")
-    .select("id,website_url,lead_contacts(email,phone)")
-    .eq("scan_run_id", scanRunId)
-    .eq("user_id", userId);
-
-  if (error) throw new Error(error.message);
-
-  type Row = {
-    id: string;
-    website_url: string | null;
-    lead_contacts: { email: string | null; phone: string | null }[] | null;
-  };
-
-  let skipped = 0;
-  const targets = ((leads ?? []) as Row[])
-    .filter((l) => Boolean(l.website_url))
-    .filter((l) => {
-      const hasEmail = (l.lead_contacts ?? []).some((c) => Boolean(c.email));
-      if (hasEmail) {
-        skipped += 1;
-        return false;
-      }
-      return true;
-    });
-
-  let newEmails = 0;
-  let newPhones = 0;
-  let attempted = 0;
-
-  if (targets.length === 0) {
-    return { attempted, newEmails, newPhones, skipped, remaining: 0 };
-  }
-
-  // Bounded concurrency so a big run doesn't open hundreds of sockets at once.
-  const HARVEST_CONCURRENCY = 10;
-  // 18s so the Apollo Layer-2 fallback (which runs only after the 7-page walk
-  // fails) actually gets reached on slow sites — see worker/src/reenrich-job.ts.
-  const PER_LEAD_BUDGET_MS = 18_000;
-  let cursor = 0;
-
-  await Promise.all(
-    Array.from({ length: HARVEST_CONCURRENCY }).map(async () => {
-      while (true) {
-        const i = cursor++;
-        if (i >= targets.length) break;
-        const lead = targets[i];
-        const websiteUrl = lead.website_url as string;
-        attempted += 1;
-
-        try {
-          const enriched = await Promise.race([
-            enrichFromWebsite(websiteUrl, 3),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error("re-enrich deadline")),
-                PER_LEAD_BUDGET_MS
-              )
-            ),
-          ]);
-
-          const sourceUrl = enriched.sourceUrls[0] ?? websiteUrl;
-          const existingPhones = new Set(
-            (lead.lead_contacts ?? [])
-              .map((c) => c.phone)
-              .filter((v): v is string => Boolean(v))
-          );
-
-          const rows: Array<{
-            lead_id: string;
-            phone: string | null;
-            email: string | null;
-            website_url: string | null;
-            source_url: string | null;
-          }> = [];
-
-          for (const email of enriched.emails) {
-            rows.push({
-              lead_id: lead.id,
-              phone: null,
-              email,
-              website_url: websiteUrl,
-              source_url: sourceUrl,
-            });
-            newEmails += 1;
-          }
-          for (const phone of enriched.phones) {
-            if (existingPhones.has(phone)) continue;
-            rows.push({
-              lead_id: lead.id,
-              phone,
-              email: null,
-              website_url: websiteUrl,
-              source_url: sourceUrl,
-            });
-            newPhones += 1;
-          }
-
-          if (rows.length > 0) {
-            await supabase.from("lead_contacts").insert(rows);
-          }
-        } catch {
-          /* per-lead deadline / network error — best-effort, move on */
-        }
-      }
-    })
-  );
-
-  return { attempted, newEmails, newPhones, skipped, remaining: 0 };
 }
