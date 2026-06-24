@@ -4,6 +4,7 @@ import express, {
   type NextFunction,
 } from "express";
 import dns from "node:dns";
+import { spawn } from "node:child_process";
 import { runScrapeJob, type JobEvent } from "./scrape-job.js";
 import { supabase } from "./db.js";
 import { runOutreachTick } from "./outreach-tick.js";
@@ -137,6 +138,37 @@ app.get("/health/scrape", async (_req, res) => {
   } catch (err) {
     probe.scraper = { error: err instanceof Error ? err.message : "scrape failed" };
   }
+
+  // Raw python urllib attempt so we see the EXACT exception find_emails.py
+  // swallows (e.g. SSLCertVerificationError = missing CA certs in the image).
+  probe.pythonFetch = await new Promise((resolve) => {
+    const code =
+      "import sys,urllib.request\n" +
+      "try:\n" +
+      " r=urllib.request.urlopen('https://luminoclinic.com/',timeout=8)\n" +
+      " sys.stdout.write('OK status=%s bytes=%d' % (getattr(r,'status','?'), len(r.read())))\n" +
+      "except Exception as e:\n" +
+      " sys.stdout.write('ERR %s: %s' % (type(e).__name__, e))\n";
+    const bin = process.env.PYTHON_BIN || "python3";
+    let child;
+    try {
+      child = spawn(bin, ["-c", code], { stdio: ["ignore", "pipe", "pipe"] });
+    } catch (err) {
+      resolve({ spawnError: err instanceof Error ? err.message : "spawn" });
+      return;
+    }
+    let out = "";
+    const t = setTimeout(() => child.kill("SIGKILL"), 12_000);
+    child.stdout?.on("data", (c) => (out += c.toString()));
+    child.stderr?.on("data", (c) => (out += c.toString()));
+    child.on("close", () => {
+      clearTimeout(t);
+      resolve(out.trim() || "(no output)");
+    });
+    child.on("error", (err) =>
+      resolve({ error: err instanceof Error ? err.message : "err" })
+    );
+  });
 
   probe.elapsedMs = Date.now() - started;
   res.json(probe);
