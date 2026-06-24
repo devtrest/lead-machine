@@ -170,7 +170,9 @@ async function runInProcessReenrich(
 
   // Bounded concurrency so a big run doesn't open hundreds of sockets at once.
   const HARVEST_CONCURRENCY = 10;
-  const PER_LEAD_BUDGET_MS = 8_000;
+  // 18s so the Apollo Layer-2 fallback (which runs only after the 7-page walk
+  // fails) actually gets reached on slow sites — see worker/src/reenrich-job.ts.
+  const PER_LEAD_BUDGET_MS = 18_000;
   let cursor = 0;
 
   await Promise.all(
