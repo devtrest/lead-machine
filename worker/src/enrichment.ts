@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { browserScrape } from "./browser-scrape.js";
 
 // Email + phone enrichment.
 //
@@ -106,11 +107,11 @@ function logSpawnFailureOnce(detail: string) {
   );
 }
 
-// Main entrypoint. Hands the website URL to find_emails.py and returns its
-// {emails, phones, sourceUrls} result. Resolves to an empty result on any
-// failure (bad URL, missing python, crash, timeout) — enrichment is always
-// best-effort and must never throw into the harvest loop.
-export async function enrichFromWebsite(
+// Layer 1: the fast Python HTTP scrape. Hands the website URL to find_emails.py
+// and returns its {emails, phones, sourceUrls, socials} result. Resolves to an
+// empty result on any failure (bad URL, missing python, crash, timeout) —
+// enrichment is always best-effort and must never throw into the harvest loop.
+async function httpScrape(
   websiteUrl: string,
   maxItems = 4
 ): Promise<EnrichedContact> {
@@ -164,6 +165,43 @@ export async function enrichFromWebsite(
       }
     });
   });
+}
+
+export type EnrichOptions = {
+  // When true, sites where the HTTP scrape finds no email fall through to the
+  // headless-Chromium pass (Layer 2). Off by default — only the deliberate
+  // "Scrape emails" re-enrich path turns it on, since it's much slower.
+  useBrowser?: boolean;
+};
+
+function mergeUnique(a: string[], b: string[], max: number): string[] {
+  return Array.from(new Set([...a, ...b])).slice(0, max);
+}
+
+// Main entrypoint. Layer 1 (Python HTTP) always runs. If it found no email and
+// opts.useBrowser is set, Layer 2 (headless Chromium) re-tries the site to
+// catch JS-rendered emails, and the two passes are merged. Best-effort: any
+// failure degrades to whatever Layer 1 produced.
+export async function enrichFromWebsite(
+  websiteUrl: string,
+  maxItems = 4,
+  opts?: EnrichOptions
+): Promise<EnrichedContact> {
+  const http = await httpScrape(websiteUrl, maxItems);
+
+  if (!opts?.useBrowser || http.emails.length > 0) return http;
+
+  // No email from the cheap pass — render the page and try again.
+  const browser = await browserScrape(websiteUrl, maxItems);
+
+  const emails = browser.emails.length > 0 ? browser.emails : http.emails;
+  return {
+    emails,
+    phones: mergeUnique(http.phones, browser.phones, maxItems),
+    sourceUrls:
+      browser.emails.length > 0 ? browser.sourceUrls : http.sourceUrls,
+    socials: { ...browser.socials, ...http.socials },
+  };
 }
 
 export type PythonHealth = {

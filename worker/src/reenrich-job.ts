@@ -28,12 +28,17 @@ export type ReenrichResult = {
   remaining: number; // candidates left unprocessed when the deadline hit
 };
 
-const HARVEST_CONCURRENCY = 20;
-// 18s, not 8s. The page walk can spend up to ~5s per hanging fetch and tries
-// up to 7 paths, so a tight budget rejected enrichFromWebsite before the
-// slower contact/about/terms pages were reached — exactly the sites that need
-// the deeper walk. 18s leaves room for several fetch timeouts in a row.
-const PER_LEAD_BUDGET_MS = 18_000;
+// 6, not 20. Most re-enrich targets are no-email leads, so most fall through to
+// the headless-Chromium Layer 2, which is concurrency-capped at ~3. With 20
+// workers, 17 would sit waiting for a render slot and blow the per-lead budget.
+// 6 keeps the browser queue shallow (a waiter gets a slot within one render
+// cycle) while still letting HTTP-only leads move.
+const HARVEST_CONCURRENCY = 6;
+// 50s, not 18s. The "Scrape emails" path now runs Layer 2 (headless Chromium)
+// on leads the HTTP pass couldn't crack — render + settle + extract is ~15-20s
+// on top of the HTTP walk, and the browser is concurrency-capped so a lead may
+// also wait briefly for a render slot. 50s covers HTTP walk + queue + render.
+const PER_LEAD_BUDGET_MS = 50_000;
 
 export async function runReenrich(
   scanRunId: string,
@@ -125,7 +130,7 @@ export async function runReenrich(
 
         try {
           const enriched = await Promise.race([
-            enrichFromWebsite(websiteUrl, 3),
+            enrichFromWebsite(websiteUrl, 3, { useBrowser: true }),
             new Promise<never>((_, reject) =>
               setTimeout(
                 () => reject(new Error("re-enrich deadline")),

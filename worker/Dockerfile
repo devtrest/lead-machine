@@ -8,13 +8,24 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Email harvesting runs in find_emails.py (stdlib only — no pip deps), spawned
-# per-lead by the worker. We need the interpreter AND ca-certificates — without
-# the CA store, python's urllib HTTPS fails with CERTIFICATE_VERIFY_FAILED on
-# every site (Node's fetch bundles its own roots, so this bites only python).
+# Email harvesting runs in two layers:
+#   - find_emails.py (stdlib python, no pip deps) — fast HTTP scrape, Layer 1.
+#   - puppeteer-core driving system Chromium — Layer 2, renders JS-only sites
+#     (premium restaurants, agency-built SPAs) where the email isn't in the
+#     static HTML. Only invoked on leads Layer 1 couldn't crack.
+# ca-certificates is required or python's urllib HTTPS fails with
+# CERTIFICATE_VERIFY_FAILED (Node bundles its own roots, so it bit only python).
+# fonts-liberation + the chromium deps let headless Chrome start in the slim image.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 ca-certificates \
+  && apt-get install -y --no-install-recommends \
+       python3 \
+       ca-certificates \
+       chromium \
+       fonts-liberation \
   && rm -rf /var/lib/apt/lists/*
+
+# Point puppeteer-core at the system Chromium (it ships no browser of its own).
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 # Install ALL deps (including devDependencies — tsc/typescript live there
 # and we need them to build). NODE_ENV stays as default during build.

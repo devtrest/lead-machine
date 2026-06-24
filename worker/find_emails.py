@@ -463,8 +463,48 @@ def enrich_from_website(website_url, max_items=4):
     }
 
 
+def enrich_from_html(html, base_url, max_items=4):
+    """Extract contacts from ALREADY-FETCHED HTML — no network.
+
+    Used by the headless-browser Layer 2 (browser-scrape.ts): Chromium renders
+    the page (running its JavaScript), hands us the resulting DOM HTML, and we
+    reuse the exact same extractors/filters as the HTTP path. Keeps all the
+    email logic in one place instead of duplicating it in Node."""
+    parts = urlsplit(base_url)
+    host = parts.netloc
+    base = (f"{parts.scheme}://{host}" if parts.scheme and host else base_url)
+    html = deobfuscate(html or "")
+    socials = extract_socials(html, base)
+    result = inspect_page(html)
+    emails, phones = ([], []) if result is None else result
+    return {
+        "emails": prefer_own_domain(emails, host)[:max_items],
+        "phones": unique(phones)[:max_items],
+        "sourceUrls": [base_url] if emails or phones else [],
+        "socials": socials,
+    }
+
+
 def main():
     empty = {"emails": [], "phones": [], "sourceUrls": [], "socials": {}}
+
+    # Stdin mode: `find_emails.py --html <base_url> [max]` reads pre-rendered
+    # HTML from stdin and extracts (no fetch). Lets the browser layer reuse
+    # this script's extraction logic.
+    if len(sys.argv) >= 3 and sys.argv[1] == "--html":
+        base_url = sys.argv[2]
+        try:
+            max_items = int(sys.argv[3]) if len(sys.argv) > 3 else 4
+        except ValueError:
+            max_items = 4
+        try:
+            html = sys.stdin.read()
+            result = enrich_from_html(html, base_url, max_items)
+        except Exception:
+            result = empty
+        print(json.dumps(result))
+        return
+
     if len(sys.argv) < 2:
         print(json.dumps(empty))
         return

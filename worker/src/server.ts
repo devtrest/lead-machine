@@ -10,11 +10,12 @@ import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
 import { runReenrich } from "./reenrich-job.js";
-import { checkPython, type PythonHealth } from "./enrichment.js";
+import { checkPython, enrichFromWebsite, type PythonHealth } from "./enrichment.js";
+import { browserStatus } from "./browser-scrape.js";
 
 // Bumped whenever the worker's scraping/enrichment behavior changes, so a
 // single `curl /health` confirms which build Railway is actually running.
-const BUILD_MARKER = "2026-06-25 python-scraper+socials";
+const BUILD_MARKER = "2026-06-25 python+browser-layer2";
 
 // Force IPv4 first for ALL DNS lookups in this process. Railway's egress
 // IPv6 routing to Google's edge (smtp.gmail.com, imap.gmail.com) is unreliable
@@ -85,6 +86,25 @@ app.get("/health", (_req, res) => {
     activeScrapes,
     maxScrapes: MAX_CONCURRENT_SCRAPES,
   });
+});
+
+// Confirms whether the headless-Chromium Layer 2 can actually launch in this
+// container (the risky part — needs the chromium binary + enough RAM). One
+// curl tells us "browser ready" vs "OOM / missing binary".
+app.get("/health/browser", async (_req, res) => {
+  res.json({ build: BUILD_MARKER, browser: await browserStatus() });
+});
+
+// TEMP — end-to-end proof that Layer 2 recovers a JS-rendered email. Renders a
+// fixed known-JS-rendered site (duckandwaffle.com hides its email behind JS)
+// and returns what the browser pass extracted. Fixed URL, no SSRF. Remove once
+// verified.
+app.get("/health/browser-scrape", async (_req, res) => {
+  const started = Date.now();
+  const result = await enrichFromWebsite("https://duckandwaffle.com", 4, {
+    useBrowser: true,
+  });
+  res.json({ elapsedMs: Date.now() - started, result });
 });
 
 // Bound how many scrapes run at once on this instance so a burst of campaigns
@@ -240,8 +260,13 @@ app.post("/scrape/reenrich", requireAuth, async (req, res) => {
     }, 15_000);
 
     try {
+      // 4 min, not 25s: the headless-Chromium Layer 2 spends ~30s/site and is
+      // concurrency-capped, so a campaign's no-email leads take minutes. The
+      // Vercel proxy route allows 300s, so we stop claiming new leads at 240s
+      // and let in-flight ones finish + emit `done` inside that window. Bigger
+      // lists report `remaining` and the user clicks again.
       const result = await runReenrich(scanRunId, userId, {
-        deadlineMs: 25_000,
+        deadlineMs: 240_000,
         onProgress: (p) => send({ phase: "progress", ...p }),
       });
       send({ phase: "done", ...result });
