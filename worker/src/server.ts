@@ -10,7 +10,7 @@ import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
 import { runReenrich } from "./reenrich-job.js";
-import { checkPython, enrichFromWebsite, type PythonHealth } from "./enrichment.js";
+import { checkPython, type PythonHealth } from "./enrichment.js";
 import { browserStatus } from "./browser-scrape.js";
 
 // Bumped whenever the worker's scraping/enrichment behavior changes, so a
@@ -90,21 +90,10 @@ app.get("/health", (_req, res) => {
 
 // Confirms whether the headless-Chromium Layer 2 can actually launch in this
 // container (the risky part — needs the chromium binary + enough RAM). One
-// curl tells us "browser ready" vs "OOM / missing binary".
+// curl tells us "browser ready" vs "OOM / missing binary". Reuses the shared
+// browser instance, so it's cheap after the first launch.
 app.get("/health/browser", async (_req, res) => {
   res.json({ build: BUILD_MARKER, browser: await browserStatus() });
-});
-
-// TEMP — end-to-end proof that Layer 2 recovers a JS-rendered email. Renders a
-// fixed known-JS-rendered site (duckandwaffle.com hides its email behind JS)
-// and returns what the browser pass extracted. Fixed URL, no SSRF. Remove once
-// verified.
-app.get("/health/browser-scrape", async (_req, res) => {
-  const started = Date.now();
-  const result = await enrichFromWebsite("https://duckandwaffle.com", 4, {
-    useBrowser: true,
-  });
-  res.json({ elapsedMs: Date.now() - started, result });
 });
 
 // Bound how many scrapes run at once on this instance so a burst of campaigns
