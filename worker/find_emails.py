@@ -36,10 +36,29 @@ Standard library only — no pip dependencies — so the Docker image just needs
 import html as html_lib
 import json
 import re
+import ssl
 import sys
 import time
+from urllib.error import URLError
 from urllib.parse import unquote, urljoin, urlsplit
 from urllib.request import Request, urlopen
+
+# Verify TLS normally. But fall back to an UNVERIFIED context when the cert
+# can't be checked — covers (a) minimal containers with no CA store and
+# (b) the many small-business sites with expired/self-signed certs. We only
+# ever READ public marketing HTML here (no secrets sent), so skipping
+# verification to reach a lead's contact page is an acceptable trade.
+_UNVERIFIED_CTX = ssl.create_default_context()
+_UNVERIFIED_CTX.check_hostname = False
+_UNVERIFIED_CTX.verify_mode = ssl.CERT_NONE
+
+
+def _is_ssl_error(exc):
+    if isinstance(exc, ssl.SSLError):
+        return True
+    return isinstance(exc, URLError) and isinstance(
+        getattr(exc, "reason", None), ssl.SSLError
+    )
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PHONE_RE = re.compile(
@@ -336,25 +355,30 @@ def discover_contact_links(html, base_url, base_host):
 
 
 def fetch_html(url, referer_origin):
-    try:
-        req = Request(
-            url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;"
-                "q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Referer": referer_origin + "/",
-            },
-        )
-        with urlopen(req, timeout=FETCH_TIMEOUT_S) as res:
-            if getattr(res, "status", 200) and res.status >= 400:
-                return None
-            raw_bytes = res.read(MAX_HTML_BYTES * 2)
-        raw = raw_bytes.decode("utf-8", errors="ignore")
-        return deobfuscate(slice_html(raw))
-    except Exception:
-        return None
+    req = Request(
+        url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;"
+            "q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": referer_origin + "/",
+        },
+    )
+    # First attempt verifies TLS; on a cert failure, retry once unverified.
+    for attempt, ctx in enumerate((None, _UNVERIFIED_CTX)):
+        try:
+            with urlopen(req, timeout=FETCH_TIMEOUT_S, context=ctx) as res:
+                if getattr(res, "status", 200) and res.status >= 400:
+                    return None
+                raw_bytes = res.read(MAX_HTML_BYTES * 2)
+            raw = raw_bytes.decode("utf-8", errors="ignore")
+            return deobfuscate(slice_html(raw))
+        except Exception as exc:
+            if attempt == 0 and _is_ssl_error(exc):
+                continue  # retry with the unverified context
+            return None
+    return None
 
 
 def enrich_from_website(website_url, max_items=4):

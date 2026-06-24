@@ -9,9 +9,11 @@ FROM node:22-slim
 WORKDIR /app
 
 # Email harvesting runs in find_emails.py (stdlib only — no pip deps), spawned
-# per-lead by the worker. We just need the interpreter on the image.
+# per-lead by the worker. We need the interpreter AND ca-certificates — without
+# the CA store, python's urllib HTTPS fails with CERTIFICATE_VERIFY_FAILED on
+# every site (Node's fetch bundles its own roots, so this bites only python).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 \
+  && apt-get install -y --no-install-recommends python3 ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 # Install ALL deps (including devDependencies — tsc/typescript live there
