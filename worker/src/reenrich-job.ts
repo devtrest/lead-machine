@@ -29,11 +29,10 @@ export type ReenrichResult = {
 };
 
 const HARVEST_CONCURRENCY = 20;
-// 18s, not 8s. The page walk can spend up to ~5s per hanging fetch, and the
-// Apollo Layer-2 fallback only fires AFTER all 7 paths fail (another ~5s). An
-// 8s budget rejected enrichFromWebsite before Apollo ever ran — starving the
-// fallback on exactly the slow/email-less sites it exists to rescue. 18s
-// leaves room for a couple of fetch timeouts plus the Apollo call.
+// 18s, not 8s. The page walk can spend up to ~5s per hanging fetch and tries
+// up to 7 paths, so a tight budget rejected enrichFromWebsite before the
+// slower contact/about/terms pages were reached — exactly the sites that need
+// the deeper walk. 18s leaves room for several fetch timeouts in a row.
 const PER_LEAD_BUDGET_MS = 18_000;
 
 export async function runReenrich(

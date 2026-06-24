@@ -15,9 +15,8 @@ type Params = Promise<{ id: string }>;
 // the user from re-enriching the whole campaign just to check one lead.
 //
 // No credit charge: the lead was already paid for at scrape time, and
-// re-enrichment doesn't generate a new lead. Apollo's organizations
-// /enrich endpoint may charge 1 Apollo credit if it has data on this
-// domain (configured via APOLLO_API_KEY in env).
+// re-enrichment doesn't generate a new lead. Enrichment is a pure website
+// crawl (find_emails.py) — no third-party API, no per-lookup cost.
 export async function POST(_req: Request, ctx: { params: Params }) {
   const { id } = await ctx.params;
   const supabase = await createClient();
@@ -64,9 +63,9 @@ export async function POST(_req: Request, ctx: { params: Params }) {
   );
 
   // Hard 25 s deadline — fits inside Vercel's 30 s function ceiling with
-  // headroom for the Supabase round-trips. Worker-side per-lead budget is
-  // already 15 s; Apollo call is ~5 s on top. 25 s catches the rare case
-  // where both budgets stretch to their limit.
+  // headroom for the Supabase round-trips. The crawl walks up to 7 pages at
+  // ~5 s each worst-case; 25 s catches the rare slow site without blowing the
+  // Vercel ceiling.
   let enriched: Awaited<ReturnType<typeof enrichFromWebsite>>;
   try {
     enriched = await Promise.race([

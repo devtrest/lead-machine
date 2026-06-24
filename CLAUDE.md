@@ -37,6 +37,16 @@ Email harvesting (`enrichFromWebsite`) and keyword clustering still work the
 same way — Places API doesn't return emails, and it hard-caps at ~60 results
 per query so clustering remains essential for high-count campaigns.
 
+**Email harvesting is now a Python script** (`worker/find_emails.py`, stdlib
+only). `enrichFromWebsite` in both `worker/src/enrichment.ts` and the dev
+mirror `src/lib/lead-enrichment.ts` is a thin wrapper that spawns the script as
+a subprocess (one call per lead) and parses its JSON. There is **no third-party
+email API** — the old Apollo (`api.apollo.io`) Layer-2 fallback was removed
+entirely. Every email we report came straight out of the HTML source of one of
+the lead's own pages; no guessing, no per-lookup cost. Local dev (`npm run dev`)
+therefore needs `python3` on PATH (override the binary with `PYTHON_BIN`); the
+worker Docker image installs it.
+
 **What changed since the last doc pass (commits `a32771b`..`cfcd491`):**
 - **Outreach grew from a one-shot composer into a full sequencer.** A 4-step
   campaign **wizard** (`/user/outreach/new`) creates campaign + steps + prospects
@@ -210,9 +220,9 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │       │                              the legacy ProgressEvent shape so the API
 │       │                              route doesn't have to change (file name
 │       │                              kept for import compatibility)
-│       ├── lead-enrichment.ts        website email/phone crawler (10 contact URLs,
-│       │                              mailto/tel hrefs, unobfuscation,
-│       │                              decoy filter)
+│       ├── lead-enrichment.ts        dev-mode wrapper: spawns worker/find_emails.py
+│       │                              (the website email/phone crawler) as a
+│       │                              subprocess and parses its JSON. No Apollo.
 │       ├── keyword-cluster.ts        Mistral API + curated 20-niche static map
 │       │                              + generic prefix fallback
 │       ├── google-leads.ts           OLDER Places-API helper used by
@@ -238,9 +248,14 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   ├── places-api.ts             Google Places API (New) Text Search client
 │   │   ├── scraper.ts                thin wrapper over places-api.ts emitting
 │   │   │                              the legacy ProgressEvent shape
-│   │   ├── enrichment.ts             same logic as src/lib/lead-enrichment.ts
+│   │   ├── enrichment.ts             spawns ../find_emails.py per lead, parses
+│   │   │                              its JSON (same wrapper as the dev mirror)
 │   │   ├── keywords.ts               same as src/lib/keyword-cluster.ts
 │   │   └── db.ts                     Supabase service-role client
+│   ├── find_emails.py                website email/phone crawler (stdlib-only
+│   │                                 Python): 7 contact paths, mailto/tel hrefs,
+│   │                                 unobfuscation, decoy filter. THE email
+│   │                                 finder — no Apollo / third-party API.
 │   ├── Dockerfile                    node:22-slim (no Chromium — Places API is HTTP)
 │   ├── railway.json                  buildCommand + healthcheck /health
 │   └── package.json                  separate deps (express, supabase-js,
@@ -432,7 +447,8 @@ Cascade chain: auth.users → profiles → scan_runs → leads → lead_contacts
 Same logic, runs in-process in the Next.js route. Uses parallel copies of the
 client code in `src/lib/` (`places-api.ts`, `lead-enrichment.ts`,
 `keyword-cluster.ts`). Used when running `npm run dev` locally — needs
-`GOOGLE_MAPS_API_KEY` in `.env.local`.
+`GOOGLE_MAPS_API_KEY` in `.env.local` **and `python3` on PATH** (the email
+harvest in `lead-enrichment.ts` spawns `worker/find_emails.py`).
 
 ### Follow-up worth considering
 
@@ -704,6 +720,19 @@ is fast enough that 30 s is plenty.
 - **June 2026 — dedicated admin login URL.** Admin sign-in moved off the shared
   `/login` toggle to its own noindexed `/leadmachineadmin` route, so user and
   admin credentials can't be confused and a leaked user login can't reach admin.
+- **June 2026 — email harvesting moved to a Python script; Apollo removed.**
+  The website email/phone crawl now lives in `worker/find_emails.py` (stdlib
+  only — urllib/re/html, no pip deps). `enrichFromWebsite` in both
+  `worker/src/enrichment.ts` and the dev mirror `src/lib/lead-enrichment.ts`
+  became a thin wrapper that spawns the script per lead and parses its JSON
+  (`{emails, phones, sourceUrls}`); the return shape is unchanged so scrape-job,
+  reenrich-job, and the single-lead route didn't change. The Apollo
+  (`api.apollo.io`) Layer-2 fallback (`worker/src/apollo.ts`,
+  `src/lib/apollo-enrich.ts`, `APOLLO_API_KEY`) was deleted entirely — no
+  third-party email API, no per-lookup cost; emails come only from the lead's
+  own site. Worker Dockerfile now `apt-get install python3` + copies the script
+  to `/app/find_emails.py`. Local dev needs `python3` on PATH (override binary
+  with `PYTHON_BIN`). Google Places (lead lookup) is untouched.
 
 ## Open work / followups
 

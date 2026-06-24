@@ -8,6 +8,12 @@ FROM node:22-slim
 
 WORKDIR /app
 
+# Email harvesting runs in find_emails.py (stdlib only — no pip deps), spawned
+# per-lead by the worker. We just need the interpreter on the image.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 \
+  && rm -rf /var/lib/apt/lists/*
+
 # Install ALL deps (including devDependencies — tsc/typescript live there
 # and we need them to build). NODE_ENV stays as default during build.
 COPY package.json package-lock.json* ./
@@ -17,6 +23,10 @@ RUN npm install --include=dev
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
+
+# The email harvester script — lives at /app/find_emails.py, resolved by
+# dist/enrichment.js as ../find_emails.py.
+COPY find_emails.py ./
 
 # Now drop dev deps to slim the runtime image
 RUN npm prune --omit=dev

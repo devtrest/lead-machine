@@ -1022,8 +1022,7 @@ function ReenrichButton({
 // same enrichment pipeline against just that one lead's website. Cheaper and
 // faster than re-enriching the whole campaign for users who only care about
 // a few specific leads. No credit charge to the user (the lead was already
-// paid for); may charge 1 Apollo credit if APOLLO_API_KEY is set and we
-// fall through to Apollo's organizations/enrich endpoint.
+// paid for) and no third-party API cost — enrichment is a pure website crawl.
 function FindEmailButton({
   leadId,
   onFound,

@@ -37,8 +37,8 @@ export async function harvestRunInProcess(
     onProgress?: (p: ReenrichProgress) => void;
   }
 ): Promise<ReenrichResult> {
-  // 18s so the Apollo Layer-2 fallback (which runs only after the 7-page walk
-  // fails) actually gets reached on slow sites — matches the worker.
+  // 18s so the full 7-page walk actually gets reached on slow sites (each
+  // hanging fetch can burn ~5s) — matches the worker.
   const PER_LEAD_BUDGET_MS = opts?.perLeadBudgetMs ?? 18_000;
   const HARVEST_CONCURRENCY = opts?.concurrency ?? 10;
   const onProgress = opts?.onProgress;
