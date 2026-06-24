@@ -11,6 +11,10 @@ export type ReenrichProgress = {
   done: number;
   total: number;
   newEmails: number;
+  // The site that just finished crawling + the email it yielded (if any).
+  // Absent on the initial frame.
+  url?: string;
+  email?: string | null;
 };
 
 export type ReenrichResult = {
@@ -84,6 +88,7 @@ export async function harvestRunInProcess(
         if (i >= targets.length) break;
         const lead = targets[i];
         const websiteUrl = lead.website_url as string;
+        let leadEmail: string | null = null;
 
         try {
           const enriched = await Promise.race([
@@ -120,6 +125,7 @@ export async function harvestRunInProcess(
               source_url: sourceUrl,
             });
             newEmails += 1;
+            if (!leadEmail) leadEmail = email;
           }
           for (const phone of enriched.phones) {
             if (existingPhones.has(phone)) continue;
@@ -140,7 +146,13 @@ export async function harvestRunInProcess(
           /* per-lead deadline / network error — best-effort, move on */
         } finally {
           completed += 1;
-          onProgress?.({ done: completed, total: targets.length, newEmails });
+          onProgress?.({
+            done: completed,
+            total: targets.length,
+            newEmails,
+            url: websiteUrl,
+            email: leadEmail,
+          });
         }
       }
     })

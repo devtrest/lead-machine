@@ -12,6 +12,7 @@ import {
   Sparkles,
   ArrowRight,
   CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 
@@ -29,6 +30,19 @@ export type FinderList = {
   withEmail: number;
   missing: number;
 };
+
+// One crawled site in the live feed: the website + the email it yielded (null
+// if the crawl found nothing).
+type SiteResult = { url: string; email: string | null };
+
+// Pretty domain for the feed — strip scheme + leading www.
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
 
 export function EmailFinderPanel({ lists }: { lists: FinderList[] }) {
   const [search, setSearch] = useState("");
@@ -172,6 +186,8 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
   const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
   // Emails found so far this run — drives the live count-down + coverage bar.
   const [found, setFound] = useState(0);
+  // Per-site feed: each crawled website + the email it yielded (or null).
+  const [feed, setFeed] = useState<SiteResult[]>([]);
 
   // When fresh server data arrives (after router.refresh resolves), the live
   // overrides are baked into list.* — drop them so we show the server truth
@@ -179,6 +195,7 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
   useEffect(() => {
     setFound(0);
     setProg(null);
+    setFeed([]);
   }, [list.missing, list.withEmail]);
 
   // Apply live progress on top of the server snapshot.
@@ -213,6 +230,7 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
     setBusy(true);
     setDone(false);
     setFound(0);
+    setFeed([]);
     setProg({ done: 0, total: list.missing });
 
     let final: {
@@ -256,6 +274,8 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
             newEmails?: number;
             attempted?: number;
             remaining?: number;
+            url?: string;
+            email?: string | null;
             message?: string;
           };
           try {
@@ -266,6 +286,12 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
           if (evt.phase === "progress") {
             setProg({ done: evt.done ?? 0, total: evt.total ?? list.missing });
             setFound(evt.newEmails ?? 0);
+            // The initial frame carries no url; per-site frames do.
+            if (evt.url) {
+              const url = evt.url;
+              const email = evt.email ?? null;
+              setFeed((prev) => [{ url, email }, ...prev]);
+            }
           } else if (evt.phase === "done") {
             final = evt;
             setFound(evt.newEmails ?? 0);
@@ -379,6 +405,40 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
           </div>
         </div>
       )}
+
+      {/* Live per-site feed — which website was crawled and what it yielded.
+          Newest first. Stays visible after the run so you can read the
+          results; clears when fresh server data lands. */}
+      {feed.length > 0 ? (
+        <div className="mt-3 max-h-44 space-y-1 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-sunken)]/50 p-2">
+          {feed.map((s, i) => (
+            <div
+              key={`${s.url}-${i}`}
+              className="flex items-center justify-between gap-2 text-[11px]"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                {s.email ? (
+                  <CheckCircle2 className="h-3 w-3 shrink-0 text-[var(--success-700)]" />
+                ) : (
+                  <XCircle className="h-3 w-3 shrink-0 text-[var(--ink-subtle)]" />
+                )}
+                <span className="truncate text-[var(--ink-muted)]">
+                  {hostOf(s.url)}
+                </span>
+              </span>
+              {s.email ? (
+                <span className="truncate font-medium text-[var(--brand-700)]">
+                  {s.email}
+                </span>
+              ) : (
+                <span className="shrink-0 text-[var(--ink-subtle)]">
+                  no email
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-1.5">

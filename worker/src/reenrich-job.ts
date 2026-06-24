@@ -41,7 +41,13 @@ export async function runReenrich(
   userId: string,
   opts?: {
     deadlineMs?: number;
-    onProgress?: (p: { done: number; total: number; newEmails: number }) => void;
+    onProgress?: (p: {
+      done: number;
+      total: number;
+      newEmails: number;
+      url?: string;
+      email?: string | null;
+    }) => void;
   }
 ): Promise<ReenrichResult> {
   // Optional overall wall-clock budget. When the caller waits on the result
@@ -116,6 +122,7 @@ export async function runReenrich(
         const lead = targets[i];
         const websiteUrl = lead.website_url as string;
         attempted += 1;
+        let leadEmail: string | null = null;
 
         try {
           const enriched = await Promise.race([
@@ -152,6 +159,7 @@ export async function runReenrich(
               source_url: sourceUrl,
             });
             newEmails += 1;
+            if (!leadEmail) leadEmail = email;
           }
 
           for (const phone of enriched.phones) {
@@ -185,6 +193,8 @@ export async function runReenrich(
             done: completed,
             total: targets.length,
             newEmails,
+            url: websiteUrl,
+            email: leadEmail,
           });
         }
       }
