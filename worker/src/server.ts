@@ -160,9 +160,13 @@ app.post("/scrape", requireAuth, async (req, res) => {
 // Re-enrich endpoint — re-runs email harvesting against the existing leads
 // in a scan_run without re-scraping Google Places. Lets a user fill in
 // missing emails for a campaign that was enriched under an older / slower
-// code version. Fire-and-forget on the caller side: we kick off the work and
-// return immediately so the Vercel function doesn't time out at 30s on
-// large campaigns.
+// code version.
+//
+// Runs synchronously with a ~25s wall-clock budget and returns the counts so
+// the caller (the Vercel route → the Email finder UI) can tell the user
+// exactly how many new emails were found instead of leaving them guessing.
+// If a list is too big to finish inside the budget, the leftover count comes
+// back as `remaining` and the user clicks again to continue.
 app.post("/scrape/reenrich", requireAuth, async (req, res) => {
   const body = (req.body ?? {}) as { scanRunId?: unknown; userId?: unknown };
   const scanRunId =
@@ -172,11 +176,15 @@ app.post("/scrape/reenrich", requireAuth, async (req, res) => {
     res.status(400).json({ error: "scanRunId and userId are required" });
     return;
   }
-  // Acknowledge fast — the actual work runs after the response is sent.
-  res.json({ ok: true, queued: true });
-  void runReenrich(scanRunId, userId).catch((err) => {
+  try {
+    const result = await runReenrich(scanRunId, userId, { deadlineMs: 25_000 });
+    res.json({ ok: true, ...result });
+  } catch (err) {
     console.error("[/scrape/reenrich]", err);
-  });
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : "Re-enrich failed" });
+  }
 });
 
 // Outreach autopilot — manual trigger endpoint for testing + on-demand kicks.

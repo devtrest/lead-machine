@@ -17,10 +17,12 @@ type Params = Promise<{ id: string }>;
 // older / slower enrichment version and the email coverage was low.
 //
 // Two execution paths, mirroring /api/google-maps-search:
-//   - Worker set (production): fire-and-forget POST to /scrape/reenrich. The
-//     worker acknowledges fast and harvests in the background; the user
-//     refreshes the page in a couple minutes to see new emails fill in.
+//   - Worker set (production): POST to /scrape/reenrich and wait. The worker
+//     harvests with a ~25s budget and returns how many new emails it found,
+//     plus a `remaining` count if the list was too big to finish in one go.
 //   - No worker (local dev): run the harvest in-process and return counts.
+// Either way the response carries the real counts so the UI can tell the
+// user exactly what happened instead of leaving them guessing.
 export async function POST(_req: Request, ctx: { params: Params }) {
   const { id } = await ctx.params;
   const supabase = await createClient();
@@ -65,6 +67,11 @@ export async function POST(_req: Request, ctx: { params: Params }) {
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
+        attempted?: number;
+        newEmails?: number;
+        newPhones?: number;
+        skipped?: number;
+        remaining?: number;
       };
       if (!res.ok || !json.ok) {
         return NextResponse.json(
@@ -72,7 +79,17 @@ export async function POST(_req: Request, ctx: { params: Params }) {
           { status: 502 }
         );
       }
-      return NextResponse.json({ ok: true, queued: true });
+      // The worker now runs synchronously and returns counts — pass them
+      // straight through so the UI can report exactly what was found.
+      return NextResponse.json({
+        ok: true,
+        queued: false,
+        attempted: json.attempted ?? 0,
+        newEmails: json.newEmails ?? 0,
+        newPhones: json.newPhones ?? 0,
+        skipped: json.skipped ?? 0,
+        remaining: json.remaining ?? 0,
+      });
     } catch (err) {
       return NextResponse.json(
         {
@@ -105,6 +122,7 @@ type ReenrichResult = {
   newEmails: number;
   newPhones: number;
   skipped: number;
+  remaining: number;
 };
 
 // In-process mirror of the worker's runReenrich (worker/src/reenrich-job.ts):
@@ -147,7 +165,7 @@ async function runInProcessReenrich(
   let attempted = 0;
 
   if (targets.length === 0) {
-    return { attempted, newEmails, newPhones, skipped };
+    return { attempted, newEmails, newPhones, skipped, remaining: 0 };
   }
 
   // Bounded concurrency so a big run doesn't open hundreds of sockets at once.
@@ -222,5 +240,5 @@ async function runInProcessReenrich(
     })
   );
 
-  return { attempted, newEmails, newPhones, skipped };
+  return { attempted, newEmails, newPhones, skipped, remaining: 0 };
 }

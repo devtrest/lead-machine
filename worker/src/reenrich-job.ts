@@ -25,6 +25,7 @@ export type ReenrichResult = {
   newEmails: number;
   newPhones: number;
   skipped: number; // already had an email
+  remaining: number; // candidates left unprocessed when the deadline hit
 };
 
 const HARVEST_CONCURRENCY = 20;
@@ -32,8 +33,18 @@ const PER_LEAD_BUDGET_MS = 8_000;
 
 export async function runReenrich(
   scanRunId: string,
-  userId: string
+  userId: string,
+  opts?: { deadlineMs?: number }
 ): Promise<ReenrichResult> {
+  // Optional overall wall-clock budget. When the caller waits on the result
+  // synchronously (the Vercel route relays the count to the user), we stop
+  // claiming new leads once we're out of time and report how many are left
+  // so the UI can say "click again for the rest". Unset = run to completion
+  // (background / fire-and-forget callers).
+  const deadline =
+    opts?.deadlineMs && opts.deadlineMs > 0
+      ? Date.now() + opts.deadlineMs
+      : Infinity;
   // Load every lead in the run + its existing contacts so we can decide
   // which ones to re-harvest.
   const { data: leads, error } = await supabase
@@ -44,7 +55,7 @@ export async function runReenrich(
 
   if (error) {
     console.error("[reenrich] fetch leads failed:", error);
-    return { attempted: 0, newEmails: 0, newPhones: 0, skipped: 0 };
+    return { attempted: 0, newEmails: 0, newPhones: 0, skipped: 0, remaining: 0 };
   }
 
   type Row = {
@@ -73,7 +84,7 @@ export async function runReenrich(
   });
 
   if (targets.length === 0) {
-    return { attempted: 0, newEmails: 0, newPhones: 0, skipped };
+    return { attempted: 0, newEmails: 0, newPhones: 0, skipped, remaining: 0 };
   }
 
   console.log(
@@ -84,6 +95,9 @@ export async function runReenrich(
   await Promise.all(
     Array.from({ length: HARVEST_CONCURRENCY }).map(async () => {
       while (true) {
+        // Stop claiming new leads once the wall-clock budget is spent. The
+        // in-flight ones finish; the rest are reported as `remaining`.
+        if (Date.now() > deadline) break;
         const i = cursor++;
         if (i >= targets.length) break;
         const lead = targets[i];
@@ -157,9 +171,10 @@ export async function runReenrich(
     })
   );
 
+  const remaining = Math.max(0, targets.length - attempted);
   console.log(
-    `[reenrich] scan_run=${scanRunId} done — attempted:${attempted} +${newEmails} emails +${newPhones} phones (skipped:${skipped})`
+    `[reenrich] scan_run=${scanRunId} done — attempted:${attempted} +${newEmails} emails +${newPhones} phones (skipped:${skipped}, remaining:${remaining})`
   );
 
-  return { attempted, newEmails, newPhones, skipped };
+  return { attempted, newEmails, newPhones, skipped, remaining };
 }

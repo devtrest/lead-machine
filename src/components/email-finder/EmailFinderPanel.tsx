@@ -197,30 +197,42 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
-        queued?: boolean;
+        attempted?: number;
         newEmails?: number;
+        remaining?: number;
         error?: string;
       };
       if (!res.ok || !json.ok) {
-        toast.error("Couldn't start email scrape", json.error);
+        toast.error("Couldn't scrape emails", json.error);
         return;
       }
       setDone(true);
-      if (json.queued) {
-        // Worker path — fire-and-forget. New emails fill in over the next
-        // couple minutes; refresh the server data so the counts update.
+
+      const found = json.newEmails ?? 0;
+      const attempted = json.attempted ?? 0;
+      const remaining = json.remaining ?? 0;
+
+      if (found > 0) {
         toast.success(
-          "Scraping started",
-          `Crawling ${list.missing} websites — refresh in 2–3 min`
+          `Found ${found} new email${found === 1 ? "" : "s"}`,
+          remaining > 0
+            ? `${remaining} site${remaining === 1 ? "" : "s"} left — click again to continue`
+            : "Open the list to see them"
+        );
+      } else if (remaining > 0) {
+        // Ran out of the time budget before finishing — not "no emails".
+        toast.success(
+          "Still working…",
+          `${remaining} site${remaining === 1 ? "" : "s"} left — click again to continue`
         );
       } else {
-        // In-process path (dev) — counts are final and returned inline.
-        const found = json.newEmails ?? 0;
+        // Finished the whole list, found nothing new — these sites don't
+        // publish an email (contact-form only / JS-rendered / protected).
         toast.success(
-          found > 0
-            ? `Found ${found} new email${found === 1 ? "" : "s"}`
-            : "Scrape complete",
-          found > 0 ? "Open the list to see them" : "No new emails this time"
+          "No new emails found",
+          attempted > 0
+            ? `Crawled ${attempted} site${attempted === 1 ? "" : "s"} — none list a public email`
+            : "Nothing left to crawl"
         );
       }
       router.refresh();
