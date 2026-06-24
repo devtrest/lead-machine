@@ -14,10 +14,18 @@ import path from "node:path";
 // same script. So resolving the script under /worker relative to the repo root
 // is safe — /worker always exists when this code path is reachable.
 
+type Socials = {
+  facebook?: string;
+  instagram?: string;
+  twitter?: string;
+  linkedin?: string;
+};
+
 type EnrichedContact = {
   emails: string[];
   phones: string[];
   sourceUrls: string[];
+  socials: Socials;
 };
 
 const SCRIPT_PATH = path.join(process.cwd(), "worker", "find_emails.py");
@@ -29,11 +37,47 @@ const PYTHON_BIN =
 
 const SUBPROCESS_TIMEOUT_MS = 25_000;
 
-const EMPTY: EnrichedContact = { emails: [], phones: [], sourceUrls: [] };
+const EMPTY: EnrichedContact = {
+  emails: [],
+  phones: [],
+  sourceUrls: [],
+  socials: {},
+};
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((v): v is string => typeof v === "string");
+}
+
+const SOCIAL_KEYS = ["facebook", "instagram", "twitter", "linkedin"] as const;
+
+function toSocials(value: unknown): Socials {
+  if (!value || typeof value !== "object") return {};
+  const src = value as Record<string, unknown>;
+  const out: Socials = {};
+  for (const key of SOCIAL_KEYS) {
+    const v = src[key];
+    if (typeof v === "string" && v) out[key] = v;
+  }
+  return out;
+}
+
+export type LeadSocialColumns = {
+  facebook_url?: string;
+  instagram_url?: string;
+  twitter_url?: string;
+  linkedin_url?: string;
+};
+
+// Map the harvested socials onto the `leads` table columns. Returns null when
+// nothing was found, so callers can skip a no-op UPDATE.
+export function socialColumns(socials: Socials): LeadSocialColumns | null {
+  const out: LeadSocialColumns = {};
+  if (socials.facebook) out.facebook_url = socials.facebook;
+  if (socials.instagram) out.instagram_url = socials.instagram;
+  if (socials.twitter) out.twitter_url = socials.twitter;
+  if (socials.linkedin) out.linkedin_url = socials.linkedin;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 // Main entrypoint. Hands the website URL to find_emails.py and returns its
@@ -85,6 +129,7 @@ export async function enrichFromWebsite(
           emails: toStringArray(parsed.emails).slice(0, maxItems),
           phones: toStringArray(parsed.phones).slice(0, maxItems),
           sourceUrls: toStringArray(parsed.sourceUrls),
+          socials: toSocials(parsed.socials),
         });
       } catch {
         finish(EMPTY);

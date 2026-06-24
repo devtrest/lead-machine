@@ -4,7 +4,7 @@ import {
   type MapsPlace,
   type ProgressEvent as ScraperEvent,
 } from "./scraper.js";
-import { enrichFromWebsite } from "./enrichment.js";
+import { enrichFromWebsite, socialColumns } from "./enrichment.js";
 import { expandKeyword, expandLocation } from "./keywords.js";
 
 export type JobEvent =
@@ -222,6 +222,19 @@ export async function runScrapeJob(input: JobInput): Promise<number> {
                 website_url: websiteUrl,
                 source_url: sourceUrl,
               });
+            }
+            // Social profile URLs live on the lead row itself (one set per
+            // business), so update there rather than in lead_contacts.
+            const socials = socialColumns(enriched.socials);
+            if (socials) {
+              await supabase
+                .from("leads")
+                .update(socials)
+                .eq("id", lead.id as string)
+                .then(
+                  () => {},
+                  () => {}
+                );
             }
           } catch {}
           done += 1;

@@ -1,5 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
-import { enrichFromWebsite } from "@/lib/lead-enrichment";
+import { enrichFromWebsite, socialColumns } from "@/lib/lead-enrichment";
 
 // Shared in-process re-enrichment harvest (no worker). Used by both the JSON
 // route (dev fallback) and the SSE stream route. Mirrors the worker's
@@ -141,6 +141,12 @@ export async function harvestRunInProcess(
 
           if (rows.length > 0) {
             await supabase.from("lead_contacts").insert(rows);
+          }
+
+          // Backfill social profile URLs on the lead row if we found any.
+          const socials = socialColumns(enriched.socials);
+          if (socials) {
+            await supabase.from("leads").update(socials).eq("id", lead.id);
           }
         } catch {
           /* per-lead deadline / network error — best-effort, move on */

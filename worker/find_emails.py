@@ -1,40 +1,39 @@
 #!/usr/bin/env python3
-"""Website email + phone harvester.
+"""Website email + phone + social harvester.
 
 This is the ONLY email-finding mechanism in Lead Machine. There is NO
-third-party API fallback (Apollo and friends were removed) — everything we
-report came directly out of the HTML source of one of the pages below.
+third-party API and NO headless browser (Apollo and Playwright/Facebook were
+deliberately left out of the automated worker) — everything we report came
+directly out of the HTML source of one of the lead's own pages.
 
 The Node worker (worker/src/enrichment.ts) and the dev-mode mirror
-(src/lib/lead-enrichment.ts) both invoke this script as a subprocess, one
-call per lead:
+(src/lib/lead-enrichment.ts) invoke this script as a subprocess, one call per
+lead:
 
     python3 find_emails.py <website_url> [max_items]
 
 It prints a single JSON object to stdout:
 
-    {"emails": [...], "phones": [...], "sourceUrls": [...]}
+    {"emails": [...], "phones": [...], "sourceUrls": [...],
+     "socials": {"facebook": "...", "instagram": "...",
+                 "twitter": "...", "linkedin": "..."}}
 
-Pipeline: for the lead's website we try a small ordered list of pages,
-inspect the raw HTML of each, and stop at the first page that yields a real
-email. If ALL pages fail, the lead saves with no email — we DO NOT guess
-(no info@domain.com fallback, no DNS lookups, no AI).
+Pipeline:
+  1. Fetch the homepage. Pull social profile links + any emails/phones.
+  2. If no email yet, DISCOVER the best contact-ish internal pages by scoring
+     the homepage's own links (contact / about / team / impressum / ...), then
+     fall back to a fixed list of common paths. Crawl them in order, stopping
+     at the first page that yields a real email.
+  3. Prefer emails on the site's own domain over generic third-party ones.
 
-Order:
-  1. Homepage (also covers the footer — most small-business sites publish
-     their email in the footer, visible on every page)
-  2. /contact-us  (English contact page)
-  3. /contact     (alternate)
-  4. /about-us    (often has the team / corporate email)
-  5. /about
-  6. /terms-and-conditions (legally required to display an email in many
-     jurisdictions for e-commerce / financial sites)
-  7. /terms
+If nothing surfaces, the lead saves with no email — we DO NOT guess (no
+info@domain.com fallback, no DNS lookups, no AI).
 
 Standard library only — no pip dependencies — so the Docker image just needs
 `python3`, no `pip install`.
 """
 
+import html as html_lib
 import json
 import re
 import sys
@@ -47,9 +46,9 @@ PHONE_RE = re.compile(
     r"(?:\+\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)\d{3,4}[\s-]?\d{3,4}"
 )
 
-# Spam / placeholder / asset-file patterns we reject from the extractor
-# output. Sites pollute their HTML with example@example.com,
-# font.woff@1x.woff URL hashes that look like emails, sentry / wix dummies.
+# Spam / placeholder / asset-file patterns we reject. Sites pollute their HTML
+# with example@example.com, font.woff@1x hashes that look like emails, sentry /
+# wix dummies, and (now that we read socials) facebook/meta CDN addresses.
 SPAM_EMAIL_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in (
@@ -73,26 +72,63 @@ SPAM_EMAIL_PATTERNS = [
         r"@wixpress\.com$",
         r"@cloudfront\.net$",
         r"@(2x|3x|x2|x3)\.",
+        r"@(facebook|fb|fbcdn|meta)\.",
+        r"\.fbcdn\.",
         r"\.(png|jpe?g|gif|webp|svg|css|js|woff2?|ttf|ico)$",
     )
 ]
 
-PATHS_TO_TRY = [
-    "",  # homepage (includes footer)
+# Internal-link words that flag a page likely to carry a contact email. Higher
+# score = crawled sooner. Mix of EN + common DE/ES/FR so we catch /kontakt,
+# /impressum, /contacto, /nous-contacter, etc.
+CONTACT_HINTS = (
+    "contact",
+    "kontakt",
+    "contacto",
+    "contatti",
+    "about",
+    "team",
+    "support",
+    "impressum",
+    "company",
+    "info",
+    "reach",
+    "connect",
+    "get-in-touch",
+    "legal",
+    "imprint",
+)
+
+# Fixed fallback paths tried after (and in addition to) discovered links, for
+# sites that don't link their contact page prominently from the homepage.
+FALLBACK_PATHS = (
     "/contact-us",
     "/contact",
     "/about-us",
     "/about",
     "/terms-and-conditions",
     "/terms",
-]
+)
+
+# Social profile destinations. We capture the URL only — no scraping of the
+# platform itself (FB/IG block datacenter IPs and need a login).
+SOCIAL_DOMAINS = {
+    "facebook": ("facebook.com", "fb.com", "fb.me"),
+    "instagram": ("instagram.com",),
+    "twitter": ("twitter.com", "x.com"),
+    "linkedin": ("linkedin.com",),
+}
+# Share / intent widgets are not the business's own profile — skip them.
+SOCIAL_SKIP = ("/sharer", "/share", "intent/", "/dialog", "plugins/")
 
 FETCH_TIMEOUT_S = 5.0
 # Overall wall-clock budget across the whole page walk. The Node side abandons
 # the call after its own per-lead deadline; we cap ourselves here so an
-# orphaned subprocess can't hang around chewing through all 7 paths on a slow
+# orphaned subprocess can't hang chewing through every candidate on a slow
 # site. Once we're out of time we stop starting new fetches.
 GLOBAL_BUDGET_S = 16.0
+# Max internal pages crawled (beyond the homepage) looking for an email.
+MAX_INTERNAL_PAGES = 6
 
 # Maximum bytes of HTML body we'll inspect per page. Some Shopify /
 # Squarespace pages serve 2-5 MB of inline JSON, CSS, and tracker scripts;
@@ -129,24 +165,23 @@ def is_likely_real_email(email):
     return True
 
 
-def decode_html_entities(s):
-    """Decode the HTML entities that commonly hide @ and . in email addresses
-    so the regex can still match them (info&#64;example.com etc.)."""
-    replacements = [
-        (re.compile(r"&commat;", re.IGNORECASE), "@"),
-        (re.compile(r"&#0*64;"), "@"),
-        (re.compile(r"&#x0*40;", re.IGNORECASE), "@"),
-        (re.compile(r"&period;", re.IGNORECASE), "."),
-        (re.compile(r"&#0*46;"), "."),
-        (re.compile(r"&#x0*2e;", re.IGNORECASE), "."),
-        (re.compile(r"&nbsp;", re.IGNORECASE), " "),
-        (re.compile(r"&amp;", re.IGNORECASE), "&"),
-        (re.compile(r"&lowbar;", re.IGNORECASE), "_"),
-        (re.compile(r"&#0*45;"), "-"),
-        (re.compile(r"&hyphen;", re.IGNORECASE), "-"),
-    ]
-    for pattern, repl in replacements:
-        s = pattern.sub(repl, s)
+def deobfuscate(s):
+    """Undo the tricks sites use to hide emails from naive scrapers.
+
+    html.unescape covers numeric/named entities (&#64; -> @, &commat; -> @,
+    &period; -> ., &amp; -> & ...). On top of that we:
+      - undo JSON unicode/slash escaping (\\u0040 -> @, \\/ -> /)
+      - turn the UNAMBIGUOUS bracketed forms into @ and . :
+        "name [at] domain [dot] com" / "(at)" / "{dot}".
+
+    We deliberately do NOT touch the bare-word " at " / " dot " forms — those
+    fire on ordinary prose ("meet us at example.com") and manufacture fake
+    addresses. Bracketed forms are safe because real text rarely contains them.
+    """
+    s = html_lib.unescape(s)
+    s = s.replace("\\u0040", "@").replace("\\u0026", "&").replace("\\/", "/")
+    s = re.sub(r"\s*[\[({]\s*at\s*[\])}]\s*", "@", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*[\[({]\s*dot\s*[\])}]\s*", ".", s, flags=re.IGNORECASE)
     return s
 
 
@@ -199,6 +234,7 @@ def is_bot_protection_challenge(html):
 
 _MAILTO_RE = re.compile(r"""href\s*=\s*["']mailto:([^"'?#]+)""", re.IGNORECASE)
 _TEL_RE = re.compile(r"""href\s*=\s*["']tel:([^"']+)""", re.IGNORECASE)
+_HREF_RE = re.compile(r"""<a\b[^>]*?\bhref\s*=\s*["']([^"'#]+)""", re.IGNORECASE)
 
 
 def extract_from_hrefs(html):
@@ -238,6 +274,67 @@ def inspect_page(html):
     return emails, phones
 
 
+def prefer_own_domain(emails, host):
+    """Re-order so emails on the site's own domain come first, dropping nothing.
+    A boutique that lists both hi@brand.com and its agency's hello@webfirm.com
+    should surface the brand's address first."""
+    if not emails or not host:
+        return emails
+    root = host.replace("www.", "").split(":")[0].lower()
+    base = root.split(".")[0]
+    own, other = [], []
+    for e in emails:
+        dom = e.split("@")[-1].lower()
+        (own if (root in dom or (base and base in dom)) else other).append(e)
+    return own + other
+
+
+def extract_socials(html, base_url):
+    """Pull the business's own social profile URLs from anchor hrefs."""
+    out = {}
+    for href in _HREF_RE.findall(html):
+        low = href.lower()
+        if any(skip in low for skip in SOCIAL_SKIP):
+            continue
+        for platform, domains in SOCIAL_DOMAINS.items():
+            if platform in out:
+                continue
+            if any(d in low for d in domains):
+                try:
+                    out[platform] = urljoin(base_url, href.strip())
+                except Exception:
+                    out[platform] = href.strip()
+    return out
+
+
+def discover_contact_links(html, base_url, base_host):
+    """Score the homepage's internal links by CONTACT_HINTS and return the most
+    promising ones (highest score first), same-domain only."""
+    root = base_host.replace("www.", "").lower()
+    scored = []
+    seen = set()
+    for href in _HREF_RE.findall(html):
+        try:
+            target = urljoin(base_url, href.strip())
+        except Exception:
+            continue
+        target = target.split("#")[0]
+        if target in seen:
+            continue
+        seen.add(target)
+        parts = urlsplit(target)
+        if parts.scheme not in ("http", "https"):
+            continue
+        if parts.netloc.replace("www.", "").lower() != root:
+            continue
+        low = target.lower()
+        score = sum(1 for h in CONTACT_HINTS if h in low)
+        if score:
+            scored.append((score, target))
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [u for _, u in scored]
+
+
 def fetch_html(url, referer_origin):
     try:
         req = Request(
@@ -255,7 +352,7 @@ def fetch_html(url, referer_origin):
                 return None
             raw_bytes = res.read(MAX_HTML_BYTES * 2)
         raw = raw_bytes.decode("utf-8", errors="ignore")
-        return decode_html_entities(slice_html(raw))
+        return deobfuscate(slice_html(raw))
     except Exception:
         return None
 
@@ -263,57 +360,89 @@ def fetch_html(url, referer_origin):
 def enrich_from_website(website_url, max_items=4):
     parts = urlsplit(website_url)
     if not parts.scheme or not parts.netloc:
-        return {"emails": [], "phones": [], "sourceUrls": []}
+        return {"emails": [], "phones": [], "sourceUrls": [], "socials": {}}
 
-    origin = f"{parts.scheme}://{parts.netloc}"
+    host = parts.netloc
+    origin = f"{parts.scheme}://{host}"
     base = origin + "/"
     deadline = time.monotonic() + GLOBAL_BUDGET_S
     all_phones = []
     source_urls = []
+    socials = {}
 
-    for path in PATHS_TO_TRY:
-        if time.monotonic() > deadline:
-            break
+    def finalize(emails, src):
+        return {
+            "emails": prefer_own_domain(emails, host)[:max_items],
+            "phones": unique(all_phones)[:max_items],
+            "sourceUrls": src,
+            "socials": socials,
+        }
+
+    # --- Homepage first: it carries socials + (usually) the footer email. ---
+    home_html = fetch_html(base, origin)
+    if home_html:
+        socials = extract_socials(home_html, base)
+        result = inspect_page(home_html)
+        if result is not None:
+            emails, phones = result
+            if phones:
+                all_phones.extend(phones)
+            if emails:
+                return finalize(emails, [base])
+            source_urls.append(base)
+
+    # --- No email on the homepage: build a crawl list. Discovered contact-ish
+    #     links first (scored), then the fixed fallback paths. ---
+    candidates = []
+    if home_html:
+        candidates.extend(discover_contact_links(home_html, base, host))
+    for path in FALLBACK_PATHS:
         try:
-            target = urljoin(base, path or "/")
+            candidates.append(urljoin(base, path))
         except Exception:
+            pass
+
+    crawled = {base}
+    pages_done = 0
+    for target in unique(candidates):
+        if pages_done >= MAX_INTERNAL_PAGES or time.monotonic() > deadline:
+            break
+        if target in crawled:
             continue
+        crawled.add(target)
 
         html = fetch_html(target, origin)
         if not html:
             continue
+        pages_done += 1
+
+        if not socials:
+            socials = extract_socials(html, base)
 
         result = inspect_page(html)
         if result is None:
             continue  # bot-protection challenge, move on
         emails, phones = result
-
         if phones:
             all_phones.extend(phones)
-
         if emails:
-            # FOUND. Return the first real email + every phone collected along
-            # the way. We do NOT keep crawling once an email is in hand.
-            return {
-                "emails": emails[:max_items],
-                "phones": unique(all_phones)[:max_items],
-                "sourceUrls": [target],
-            }
-
+            return finalize(emails, [target])
         source_urls.append(target)
 
-    # No email found anywhere — return whatever phones we picked up. NO
-    # GUESSING. The lead saves with phone-only contact info.
+    # No email found anywhere — return phones + socials we picked up. NO
+    # GUESSING. The lead saves with phone/social-only contact info.
     return {
         "emails": [],
         "phones": unique(all_phones)[:max_items],
         "sourceUrls": unique(source_urls),
+        "socials": socials,
     }
 
 
 def main():
+    empty = {"emails": [], "phones": [], "sourceUrls": [], "socials": {}}
     if len(sys.argv) < 2:
-        print(json.dumps({"emails": [], "phones": [], "sourceUrls": []}))
+        print(json.dumps(empty))
         return
     website_url = sys.argv[1]
     try:
@@ -324,7 +453,7 @@ def main():
     try:
         result = enrich_from_website(website_url, max_items)
     except Exception:
-        result = {"emails": [], "phones": [], "sourceUrls": []}
+        result = empty
     print(json.dumps(result))
 
 

@@ -40,12 +40,20 @@ per query so clustering remains essential for high-count campaigns.
 **Email harvesting is now a Python script** (`worker/find_emails.py`, stdlib
 only). `enrichFromWebsite` in both `worker/src/enrichment.ts` and the dev
 mirror `src/lib/lead-enrichment.ts` is a thin wrapper that spawns the script as
-a subprocess (one call per lead) and parses its JSON. There is **no third-party
-email API** — the old Apollo (`api.apollo.io`) Layer-2 fallback was removed
-entirely. Every email we report came straight out of the HTML source of one of
-the lead's own pages; no guessing, no per-lookup cost. Local dev (`npm run dev`)
-therefore needs `python3` on PATH (override the binary with `PYTHON_BIN`); the
-worker Docker image installs it.
+a subprocess (one call per lead) and parses its JSON
+(`{emails, phones, sourceUrls, socials}`). There is **no third-party email API
+and no headless browser** — the old Apollo (`api.apollo.io`) Layer-2 fallback
+was removed entirely. The crawl fetches the homepage, then discovers the best
+contact-ish internal pages by scoring the homepage's own links
+(contact/about/team/impressum/...) before falling back to a fixed path list;
+it deobfuscates bracketed `info [at] domain [dot] com` forms (but NOT bare
+"at"/"dot" prose, which would fabricate fake emails), prefers emails on the
+site's own domain, and captures the business's Facebook/Instagram/Twitter/
+LinkedIn profile URLs (stored on `leads.*_url`, shown in the leads drawer +
+exports). Every email came straight out of the HTML source of one of the lead's
+own pages; no guessing, no per-lookup cost. Local dev (`npm run dev`) needs
+`python3` on PATH (override the binary with `PYTHON_BIN`); the worker Docker
+image installs it.
 
 **What changed since the last doc pass (commits `a32771b`..`cfcd491`):**
 - **Outreach grew from a one-shot composer into a full sequencer.** A 4-step
@@ -252,10 +260,13 @@ copies of the scraper code at `src/lib/google-maps-scraper.ts`,
 │   │   │                              its JSON (same wrapper as the dev mirror)
 │   │   ├── keywords.ts               same as src/lib/keyword-cluster.ts
 │   │   └── db.ts                     Supabase service-role client
-│   ├── find_emails.py                website email/phone crawler (stdlib-only
-│   │                                 Python): 7 contact paths, mailto/tel hrefs,
-│   │                                 unobfuscation, decoy filter. THE email
-│   │                                 finder — no Apollo / third-party API.
+│   ├── find_emails.py                website email/phone/social crawler (stdlib
+│   │                                 -only Python): homepage → scored contact-page
+│   │                                 discovery + fixed fallbacks, mailto/tel hrefs,
+│   │                                 bracket-form deobfuscation, domain-preferred
+│   │                                 emails, FB/IG/Twitter/LinkedIn capture. THE
+│   │                                 email finder — no Apollo / third-party API,
+│   │                                 no headless browser.
 │   ├── Dockerfile                    node:22-slim (no Chromium — Places API is HTTP)
 │   ├── railway.json                  buildCommand + healthcheck /health
 │   └── package.json                  separate deps (express, supabase-js,
@@ -348,6 +359,7 @@ Run order in SQL editor (fresh install — all idempotent):
 15. `supabase/senders_multi_provider.sql`
 16. `supabase/trial_subscriptions.sql`
 17. `supabase/zero_signup_credits.sql`
+18. `supabase/lead_socials.sql`
 Then one-time: `promote_admin.sql` (edit email first), `backfill_profiles.sql`.
 
 **Tables:**
@@ -356,7 +368,7 @@ Then one-time: `promote_admin.sql` (edit email first), `backfill_profiles.sql`.
   **trial_target_plan**, **trial_status**, **trial_last_error**, created_at, updated_at)
 - `enterprise_requests` (id, user_id, email, note, status, created_at)
 - `scan_runs` (id, user_id, source, keyword, location, status, limit_count, result_count, started_at, finished_at, error)
-- `leads` (id, user_id, scan_run_id, source, name, category, address, rating, review_count, maps_url, website_url, dedupe_key, created_at)
+- `leads` (id, user_id, scan_run_id, source, name, category, address, rating, review_count, maps_url, website_url, **facebook_url**, **instagram_url**, **twitter_url**, **linkedin_url**, dedupe_key, created_at) — socials harvested off the website by `find_emails.py`
 - `lead_contacts` (id, lead_id, phone, email, website_url, source_url, created_at)
 - `email_sends` (id, user_id, lead_id (nullable), scan_run_id, campaign_id, step_order, recipient_email, subject, body, status, error, provider_message_id, attachment_count, **open_token (unique)**, **open_count**, **first_opened_at**, sent_at, created_at)
 - `outreach_campaigns` (id, user_id, scan_run_id, name, status, **send_window_start**, **send_window_end**, **send_days[]**, **timezone**, **daily_limit (default 50, 1–500)**, created_at, started_at, finished_at) — status in draft/active/paused/completed
@@ -733,6 +745,21 @@ is fast enough that 30 s is plenty.
   own site. Worker Dockerfile now `apt-get install python3` + copies the script
   to `/app/find_emails.py`. Local dev needs `python3` on PATH (override binary
   with `PYTHON_BIN`). Google Places (lead lookup) is untouched.
+- **June 2026 — scraper upgrade: smart discovery + deobfuscation + socials.**
+  Ported ideas from a richer scraper into `find_emails.py` while keeping it
+  stdlib-only (no requests/bs4/Playwright). Now: scores the homepage's own
+  links by contact-hint words (contact/about/team/impressum/kontakt/...) to pick
+  which internal pages to crawl, before the fixed fallback paths; deobfuscates
+  the safe bracketed `info [at] domain [dot] com` forms only (bare "at"/"dot"
+  prose left alone to avoid fabricating emails); prefers own-domain emails over
+  third-party (e.g. the site's agency); and captures FB/IG/Twitter/LinkedIn
+  profile URLs. Socials are stored on new `leads.{facebook,instagram,twitter,
+  linkedin}_url` columns (`supabase/lead_socials.sql`), surfaced in the leads
+  drawer + CSV/Excel export, and backfilled by re-enrich. The **Playwright +
+  Facebook-cookie email-scraping** path from the source tool was intentionally
+  NOT added to the automated worker — it needs a logged-in cookie per run and a
+  headless browser (the Puppeteer setup we removed), and FB blocks datacenter
+  IPs; it only makes sense as a manual/local tool.
 
 ## Open work / followups
 

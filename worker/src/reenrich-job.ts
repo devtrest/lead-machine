@@ -18,7 +18,7 @@
 //     time.
 
 import { supabase } from "./db.js";
-import { enrichFromWebsite } from "./enrichment.js";
+import { enrichFromWebsite, socialColumns } from "./enrichment.js";
 
 export type ReenrichResult = {
   attempted: number;
@@ -183,6 +183,19 @@ export async function runReenrich(
                 insErr.message
               );
             }
+          }
+
+          // Backfill social profile URLs on the lead row if we found any.
+          const socials = socialColumns(enriched.socials);
+          if (socials) {
+            await supabase
+              .from("leads")
+              .update(socials)
+              .eq("id", lead.id)
+              .then(
+                () => {},
+                () => {}
+              );
           }
         } catch {
           /* per-lead deadline / network error — silent, move on */

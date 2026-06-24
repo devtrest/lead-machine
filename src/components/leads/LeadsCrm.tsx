@@ -23,6 +23,10 @@ import {
   Layers,
   Loader2,
   Wand2,
+  Facebook,
+  Instagram,
+  Twitter,
+  Linkedin,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import Link from "next/link";
@@ -40,6 +44,10 @@ type Lead = {
   review_count: number | null;
   maps_url: string | null;
   website_url: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
   created_at: string;
   scan_run_id?: string;
   lead_contacts: { phone: string | null; email: string | null; source_url: string | null }[];
@@ -210,6 +218,10 @@ export function LeadsCrm() {
         Phone: phones.join(" | "),
         Email: emails.join(" | "),
         Website: l.website_url ?? "",
+        Facebook: l.facebook_url ?? "",
+        Instagram: l.instagram_url ?? "",
+        Twitter: l.twitter_url ?? "",
+        LinkedIn: l.linkedin_url ?? "",
         "Maps URL": l.maps_url ?? "",
         Created: new Date(l.created_at).toISOString().slice(0, 10),
       };
@@ -875,6 +887,8 @@ function LeadDetail({ lead }: { lead: Lead }) {
         </DetailRow>
       ) : null}
 
+      <SocialRow lead={lead} />
+
       {phones.length > 0 ? (
         <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone numbers">
           <div className="flex flex-wrap gap-1.5">
@@ -920,6 +934,41 @@ function LeadDetail({ lead }: { lead: Lead }) {
         </a>
       ) : null}
     </div>
+  );
+}
+
+// Social profiles harvested off the lead's website. Renders nothing when the
+// lead has no socials, so it's safe to always mount in the drawer.
+function SocialRow({ lead }: { lead: Lead }) {
+  const links = [
+    { url: lead.facebook_url, label: "Facebook", icon: Facebook },
+    { url: lead.instagram_url, label: "Instagram", icon: Instagram },
+    { url: lead.twitter_url, label: "X / Twitter", icon: Twitter },
+    { url: lead.linkedin_url, label: "LinkedIn", icon: Linkedin },
+  ].filter((s): s is { url: string; label: string; icon: typeof Facebook } =>
+    Boolean(s.url)
+  );
+
+  if (links.length === 0) return null;
+
+  return (
+    <DetailRow icon={<Users className="h-4 w-4" />} label="Social profiles">
+      <div className="flex flex-wrap gap-1.5">
+        {links.map(({ url, label, icon: Icon }) => (
+          <a
+            key={label}
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            title={url}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-elev)] px-2.5 py-1 text-xs font-medium text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)]"
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </a>
+        ))}
+      </div>
+    </DetailRow>
   );
 }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { enrichFromWebsite } from "@/lib/lead-enrichment";
+import { enrichFromWebsite, socialColumns } from "@/lib/lead-enrichment";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -84,6 +84,13 @@ export async function POST(_req: Request, ctx: { params: Params }) {
       },
       { status: 502 }
     );
+  }
+
+  // Persist any social profile URLs on the lead row — independent of whether
+  // we also turned up a new email/phone, since a site can expose only socials.
+  const socials = socialColumns(enriched.socials);
+  if (socials) {
+    await supabase.from("leads").update(socials).eq("id", id);
   }
 
   // Insert any NEW emails/phones (skip ones already on the lead).
