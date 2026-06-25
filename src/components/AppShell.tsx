@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -118,6 +118,18 @@ export function AppShell({ email, fullName, credits, plan, role, children }: Pro
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Refetch fresh server data on every tab switch. The App Router can otherwise
+  // serve a cached snapshot of a route you visited earlier (stale credits, lead
+  // counts, etc.). Skip the first mount — the initial render is already fresh.
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    router.refresh();
+  }, [pathname, router]);
 
   // Keep the credit balance live without a manual refresh. Adopt the server
   // value on navigation/refresh, poll every few seconds, and update instantly
