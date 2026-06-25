@@ -65,10 +65,33 @@ PHONE_RE = re.compile(
     r"(?:\+\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)\d{3,4}[\s-]?\d{3,4}"
 )
 
-# Spam / placeholder / asset-file patterns we reject. Sites pollute their HTML
-# with example@example.com, font.woff@1x hashes that look like emails, sentry /
-# wix dummies, and (now that we read socials) facebook/meta CDN addresses.
-SPAM_EMAIL_PATTERNS = [
+# HARD junk — never a real business contact, rejected ALWAYS regardless of
+# source: placeholder/dummy DOMAINS, tracker/CDN addresses, asset-file hashes
+# that look like emails (font.woff@1x), and social CDNs.
+HARD_EMAIL_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"@example\.(com|net|org)$",
+        r"@domain\.com$",
+        r"@email\.com$",
+        r"@yourdomain\.",
+        r"@(your)?company\.com$",
+        r"@sentry\.io$",
+        r"@wixpress\.com$",
+        r"@cloudfront\.net$",
+        r"@(2x|3x|x2|x3)\.",
+        r"@(facebook|fb|fbcdn|meta)\.",
+        r"\.fbcdn\.",
+        r"\.(png|jpe?g|gif|webp|svg|css|js|woff2?|ttf|ico)$",
+    )
+]
+
+# SOFT placeholders — generic LOCAL parts (email@, name@, you@, ...) that are
+# usually template dummies BUT are sometimes a real mailbox a business actually
+# chose (e.g. email@dustystudio.com). Rejected only when the address is NOT
+# trusted — i.e. it didn't come from a mailto: link / JSON-LD and isn't on the
+# site's own domain.
+SOFT_EMAIL_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in (
         r"^example@",
@@ -83,17 +106,7 @@ SPAM_EMAIL_PATTERNS = [
         r"^lastname",
         r"^john\.?doe@",
         r"^jane\.?doe@",
-        r"@example\.(com|net|org)$",
-        r"@domain\.com$",
-        r"@email\.com$",
-        r"@yourdomain\.",
-        r"@sentry\.io$",
-        r"@wixpress\.com$",
-        r"@cloudfront\.net$",
-        r"@(2x|3x|x2|x3)\.",
-        r"@(facebook|fb|fbcdn|meta)\.",
-        r"\.fbcdn\.",
-        r"\.(png|jpe?g|gif|webp|svg|css|js|woff2?|ttf|ico)$",
+        r"^email\.example",
     )
 ]
 
@@ -167,7 +180,12 @@ def unique(values):
     return list(dict.fromkeys(values))
 
 
-def is_likely_real_email(email):
+def is_likely_real_email(email, trusted=False):
+    """`trusted` = the address came from a strong source (a mailto: link, a
+    JSON-LD `"email"` field, or it's on the site's own domain). Trusted
+    addresses skip the SOFT placeholder filter, so a real but generic-looking
+    mailbox like email@dustystudio.com survives, while email@example.com (which
+    also trips a HARD rule) and untrusted name@/you@/... dummies don't."""
     e = email.lower()
     if len(e) > 100 or len(e) < 6:
         return False
@@ -178,9 +196,13 @@ def is_likely_real_email(email):
         return False
     if "." not in domain:
         return False
-    for p in SPAM_EMAIL_PATTERNS:
+    for p in HARD_EMAIL_PATTERNS:
         if p.search(e):
             return False
+    if not trusted:
+        for p in SOFT_EMAIL_PATTERNS:
+            if p.search(e):
+                return False
     return True
 
 
@@ -332,13 +354,22 @@ def inspect_page(html, host=None):
     text_emails, text_phones = extract_from_text(html)
     json_emails = extract_json_emails(html)
 
-    emails = [
-        e
-        for e in unique(
-            [x.lower() for x in href_emails] + text_emails + json_emails
-        )
-        if is_likely_real_email(e)
-    ]
+    # Build a trust map (email -> trusted). mailto: links and JSON-LD fields are
+    # owner-declared = trusted; plain-text emails are trusted only on the site's
+    # own domain. An email seen in several sources keeps the strongest trust.
+    # Insertion order (mailto, then JSON-LD, then text) is preserved for output.
+    trust = {}
+    for e in href_emails:
+        k = e.lower()
+        trust[k] = True
+    for e in json_emails:
+        k = e.lower()
+        trust[k] = trust.get(k, False) or True
+    for e in text_emails:
+        k = e.lower()
+        trust[k] = trust.get(k, False) or is_own_domain(k, host)
+
+    emails = [e for e, t in trust.items() if is_likely_real_email(e, t)]
     phones = unique(href_phones + text_phones)
     return emails, phones
 
