@@ -27,6 +27,57 @@ import {
   type SenderPresetKey,
 } from "@/lib/sender-providers";
 
+// Real provider brand glyphs (lucide-react dropped its brand icons, so we ship
+// our own). Single-path marks in each brand's color; rendered on a white chip.
+function GmailGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#EA4335"
+        d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"
+      />
+    </svg>
+  );
+}
+function OutlookGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#0078D4"
+        d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.11-.87q.1-.43.34-.76.22-.33.59-.52.36-.2.87-.2t.86.2q.35.21.57.55.22.34.31.77.1.43.1.86zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6.5V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V10.85l1.24.72h.01q.1.07.18.18.07.12.07.25zm-6-8.25v3h3v-3zm0 4.5v3h3v-3zm0 4.5v1.83l3.05-1.83zm-5.25-9v3h3.75v-3zm0 4.5v3h3.75v-3zm0 4.5v2.03l2.41 1.5 1.34-.8v-2.73zM9 3.75V6h2l.13.01.12.04v-2.3zM5.98 15.98q.9 0 1.6-.3.7-.32 1.19-.86.48-.55.73-1.28.25-.74.25-1.61 0-.83-.25-1.55-.24-.71-.71-1.24t-1.15-.83q-.68-.3-1.55-.3-.92 0-1.64.3-.71.31-1.2.85-.5.54-.75 1.28-.25.73-.25 1.61 0 .85.24 1.56.25.72.72 1.24.47.52 1.15.82.68.3 1.56.3zM7.13 12L24 22.5V12z"
+      />
+    </svg>
+  );
+}
+function TitanGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="2" y="4" width="20" height="16" rx="3" fill="#0B5CD5" />
+      <path
+        d="M4 7.5l8 5 8-5"
+        stroke="#fff"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Pick the right brand glyph for a provider key (custom → generic server icon).
+function providerIcon(key: string, className = "h-3.5 w-3.5") {
+  switch (key) {
+    case "gmail":
+      return <GmailGlyph className={className} />;
+    case "outlook":
+      return <OutlookGlyph className={className} />;
+    case "titan":
+      return <TitanGlyph className={className} />;
+    default:
+      return <Server className={className} />;
+  }
+}
+
 export type Sender = {
   id: string;
   email: string;
@@ -168,8 +219,8 @@ export function SendersManager({
             >
               <div>
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
-                    <Mail className="h-5 w-5" />
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[var(--ink-muted)] ring-1 ring-inset ring-[var(--border)]">
+                    {providerIcon(s.provider, "h-6 w-6")}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -383,17 +434,13 @@ function AddSenderForm({
                 }`}
               >
                 <span
-                  className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                  className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-white text-[var(--ink-muted)] ${
                     active
-                      ? "bg-[var(--brand-600)] text-white"
-                      : "bg-[var(--surface-sunken)] text-[var(--ink-muted)]"
+                      ? "border-[var(--brand-300)]"
+                      : "border-[var(--border)]"
                   }`}
                 >
-                  {p.key === "custom" ? (
-                    <Server className="h-3.5 w-3.5" />
-                  ) : (
-                    <Mail className="h-3.5 w-3.5" />
-                  )}
+                  {providerIcon(p.key)}
                 </span>
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-[var(--ink-strong)]">

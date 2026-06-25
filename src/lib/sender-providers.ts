@@ -5,13 +5,7 @@
 // 'custom' lets the user enter any SMTP/IMAP host manually — useful for
 // custom domain relays, business email hosts, or self-run servers.
 
-export type SenderPresetKey =
-  | "gmail"
-  | "outlook"
-  | "titan"
-  | "zoho"
-  | "yahoo"
-  | "custom";
+export type SenderPresetKey = "gmail" | "outlook" | "titan" | "custom";
 
 export type SenderPreset = {
   key: SenderPresetKey;
@@ -76,36 +70,6 @@ export const SENDER_PRESETS: Record<SenderPresetKey, SenderPreset> = {
     passwordHint: "Your Titan mailbox password.",
     passwordLengthHint: "Mailbox password",
     helpUrl: "https://flockmail.com",
-  },
-  zoho: {
-    key: "zoho",
-    label: "Zoho Mail",
-    description: "Zoho Mail free or paid mailbox",
-    smtpHost: "smtp.zoho.com",
-    smtpPort: 465,
-    smtpSecure: true,
-    imapHost: "imap.zoho.com",
-    imapPort: 993,
-    imapSecure: true,
-    passwordHint:
-      "Enable IMAP in Zoho Mail Settings, then create an app password under Security → App Passwords.",
-    passwordLengthHint: "App password",
-    helpUrl: "https://accounts.zoho.com",
-  },
-  yahoo: {
-    key: "yahoo",
-    label: "Yahoo Mail",
-    description: "Yahoo or AOL mailbox",
-    smtpHost: "smtp.mail.yahoo.com",
-    smtpPort: 465,
-    smtpSecure: true,
-    imapHost: "imap.mail.yahoo.com",
-    imapPort: 993,
-    imapSecure: true,
-    passwordHint:
-      "Generate an app password at login.yahoo.com → Account security → Manage app passwords.",
-    passwordLengthHint: "App password",
-    helpUrl: "https://login.yahoo.com/account/security",
   },
   custom: {
     key: "custom",

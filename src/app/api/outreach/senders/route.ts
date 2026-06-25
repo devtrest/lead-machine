@@ -179,13 +179,7 @@ export async function POST(req: Request) {
   // Outlook is roughly 300/day. Custom hosts default to 500 — the user
   // should tune via PATCH if they know better.
   const defaultDailyLimit =
-    providerKey === "gmail"
-      ? 500
-      : providerKey === "outlook"
-        ? 300
-        : providerKey === "yahoo"
-          ? 100
-          : 500;
+    providerKey === "gmail" ? 500 : providerKey === "outlook" ? 300 : 500;
 
   const { error } = await supabase.from("outreach_senders").insert({
     user_id: user.id,
@@ -220,7 +214,7 @@ export async function POST(req: Request) {
 
 function humanizeVerifyError(raw: string, providerLabel: string): string {
   if (/Invalid login|Username and Password not accepted|535|BadCredentials/i.test(raw)) {
-    return `${providerLabel} rejected those credentials. Double-check the email + password and (for Gmail/Yahoo/Outlook) confirm 2-step verification is enabled and the password is an APP PASSWORD, not your normal login password.`;
+    return `${providerLabel} rejected those credentials. Double-check the email + password and (for Gmail/Outlook) confirm 2-step verification is enabled and the password is an APP PASSWORD, not your normal login password.`;
   }
   if (/SMTP AUTH/i.test(raw)) {
     return `${providerLabel} refused SMTP authentication. For Microsoft 365 mailboxes, an admin needs to enable SMTP AUTH for this user.`;
