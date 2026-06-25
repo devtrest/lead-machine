@@ -116,6 +116,7 @@ export function BillingDashboard(props: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [confirmPack, setConfirmPack] = useState<TopupCard | null>(null);
 
   const isTrialing =
     props.trialStatus === "active" || props.subscriptionStatus === "trialing";
@@ -177,11 +178,36 @@ export function BillingDashboard(props: Props) {
       const { url } = await post("/api/billing/trial", { targetPlan: planId });
       if (url) window.location.href = url;
     });
-  const topup = (packId: string) =>
+  // No card on file → go straight to hosted Checkout (they'll enter a card).
+  const topupViaCheckout = (packId: string) =>
     run(`topup-${packId}`, async () => {
       const { url } = await post("/api/billing/topup", { packId });
       if (url) window.location.href = url;
     });
+
+  // Card on file → confirm in a popup, then charge it off-session.
+  const confirmTopup = () => {
+    const pack = confirmPack;
+    if (!pack) return;
+    return run(`topup-${pack.id}`, async () => {
+      const res = await post("/api/billing/topup", { packId: pack.id });
+      // Off-session declined / needs 3-D Secure → route returns a Checkout URL.
+      if (res.url) {
+        window.location.href = res.url;
+        return;
+      }
+      setConfirmPack(null);
+      toast.success(
+        "Credits added",
+        `${(res.creditsAdded ?? pack.credits).toLocaleString()} credits added — charged to your card on file.`
+      );
+      router.refresh();
+    });
+  };
+
+  // Clicking Buy: confirm against the saved card, or jump to Checkout if none.
+  const onBuy = (pack: TopupCard) =>
+    props.card ? setConfirmPack(pack) : topupViaCheckout(pack.id);
   const switchPlan = (planId: string) =>
     run(`plan-${planId}`, async () => {
       await post("/api/billing/switch", { plan: planId });
@@ -486,7 +512,7 @@ export function BillingDashboard(props: Props) {
               </div>
               <button
                 type="button"
-                onClick={() => topup(pack.id)}
+                onClick={() => onBuy(pack)}
                 disabled={busy === `topup-${pack.id}`}
                 className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--ink-strong)] py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
               >
@@ -569,6 +595,77 @@ export function BillingDashboard(props: Props) {
         Payments are processed securely by Stripe. 1 credit = 1 scraped lead or 1
         initial outreach email — follow-ups are always free.
       </p>
+
+      {/* Top-up confirmation popup — charges the card on file, no redirect. */}
+      {confirmPack && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => {
+              if (busy !== `topup-${confirmPack.id}`) setConfirmPack(null);
+            }}
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface-elev)] p-6 shadow-[var(--shadow-lg)]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--brand-50)] text-[var(--brand-700)]">
+                <Zap className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-[var(--ink-strong)]">
+                  Confirm purchase
+                </h3>
+                <p className="text-xs text-[var(--ink-muted)]">
+                  Credits never expire and are used first.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-sunken)]/40 p-4">
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-[var(--ink-muted)]">
+                  {confirmPack.credits.toLocaleString()} credits
+                </span>
+                <span className="text-lg font-semibold tabular-nums text-[var(--ink-strong)]">
+                  {confirmPack.price}
+                </span>
+              </div>
+              {props.card && (
+                <div className="mt-3 flex items-center gap-2 border-t border-[var(--border)] pt-3 text-xs text-[var(--ink-muted)]">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  <span className="capitalize">{props.card.brand}</span> ••••{" "}
+                  {props.card.last4}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmPack(null)}
+                disabled={busy === `topup-${confirmPack.id}`}
+                className="flex-1 rounded-lg border border-[var(--border)] py-2.5 text-sm font-semibold text-[var(--ink-strong)] transition hover:bg-[var(--surface-sunken)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmTopup}
+                disabled={busy === `topup-${confirmPack.id}`}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--ink-strong)] py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {busy === `topup-${confirmPack.id}` ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4" />
+                )}
+                Pay {confirmPack.price}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
