@@ -254,14 +254,40 @@ def is_bot_protection_challenge(html):
 _MAILTO_RE = re.compile(r"""href\s*=\s*["']mailto:([^"'?#]+)""", re.IGNORECASE)
 _TEL_RE = re.compile(r"""href\s*=\s*["']tel:([^"']+)""", re.IGNORECASE)
 _HREF_RE = re.compile(r"""<a\b[^>]*?\bhref\s*=\s*["']([^"'#]+)""", re.IGNORECASE)
+# JSON / JSON-LD "email" fields, e.g. structured data:  "email": "support@x.com"
+# (optionally prefixed "mailto:"). This is where lots of sites publish their
+# contact email for SEO — and it lives inside <script> blocks that the visible
+# -text pass strips out.
+_JSON_EMAIL_RE = re.compile(
+    r'"email"\s*:\s*"\s*(?:mailto:)?([^"\\]+?)\s*"', re.IGNORECASE
+)
+# Split a mailto target (or JSON value) that lists several addresses.
+_ADDR_SPLIT_RE = re.compile(r"[,;\s]+")
 
 
 def extract_from_hrefs(html):
     """mailto: hrefs are the strongest possible signal — the site OWNER put
-    the link there explicitly. tel: links give us phones too."""
-    emails = [unquote(m).strip() for m in _MAILTO_RE.findall(html)]
+    the link there explicitly. tel: links give us phones too. A single mailto:
+    can carry several addresses (mailto:a@x.com,b@y.com) — split them."""
+    emails = []
+    for m in _MAILTO_RE.findall(html):
+        for part in _ADDR_SPLIT_RE.split(unquote(m).strip()):
+            if "@" in part:
+                emails.append(part)
     phones = [unquote(m).strip() for m in _TEL_RE.findall(html)]
     return emails, phones
+
+
+def extract_json_emails(html):
+    """Emails declared in JSON / JSON-LD `"email": "..."` fields (inside
+    <script> blocks). Owner-declared structured data — high trust — so we keep
+    them regardless of domain (a small biz may list its gmail here)."""
+    out = []
+    for m in _JSON_EMAIL_RE.findall(html):
+        for part in _ADDR_SPLIT_RE.split(m.strip()):
+            if "@" in part:
+                out.append(part.lower())
+    return out
 
 
 def extract_from_text(html):
@@ -277,16 +303,40 @@ def extract_from_text(html):
     return emails, phones
 
 
-def inspect_page(html):
+def is_own_domain(email, host):
+    """True if `email` is on the site's own domain (handles the www. prefix and
+    matches on the registrable-ish base, e.g. acme.com matches mail.acme.com)."""
+    if not host:
+        return False
+    root = host.replace("www.", "").split(":")[0].lower()
+    base = root.split(".")[0]
+    dom = email.split("@")[-1].lower()
+    return root in dom or (bool(base) and base in dom)
+
+
+def inspect_page(html, host=None):
     """Inspect ONE page's HTML — return (emails, phones) found there, or None
-    if the page is a bot-protection challenge."""
+    if the page is a bot-protection challenge.
+
+    Sources, in priority order:
+      1. mailto: hrefs                  — site owner linked it explicitly
+      2. visible text (markup stripped) — footers, contact paragraphs
+      3. JSON-LD `"email"` fields        — structured data inside <script> blocks
+    Source 3 is the new one: lots of sites publish their contact email ONLY in
+    a JSON-LD block (for SEO), which (2) strips out. We read the `"email"` field
+    specifically (not a blind scan of all script text) so we don't glue stray
+    digits onto locals or scoop up bundled-library addresses."""
     if is_bot_protection_challenge(html):
         return None
     href_emails, href_phones = extract_from_hrefs(html)
     text_emails, text_phones = extract_from_text(html)
+    json_emails = extract_json_emails(html)
+
     emails = [
         e
-        for e in unique([x.lower() for x in href_emails] + text_emails)
+        for e in unique(
+            [x.lower() for x in href_emails] + text_emails + json_emails
+        )
         if is_likely_real_email(e)
     ]
     phones = unique(href_phones + text_phones)
@@ -299,12 +349,9 @@ def prefer_own_domain(emails, host):
     should surface the brand's address first."""
     if not emails or not host:
         return emails
-    root = host.replace("www.", "").split(":")[0].lower()
-    base = root.split(".")[0]
     own, other = [], []
     for e in emails:
-        dom = e.split("@")[-1].lower()
-        (own if (root in dom or (base and base in dom)) else other).append(e)
+        (own if is_own_domain(e, host) else other).append(e)
     return own + other
 
 
@@ -406,7 +453,7 @@ def enrich_from_website(website_url, max_items=4):
     home_html = fetch_html(base, origin)
     if home_html:
         socials = extract_socials(home_html, base)
-        result = inspect_page(home_html)
+        result = inspect_page(home_html, host)
         if result is not None:
             emails, phones = result
             if phones:
@@ -443,7 +490,7 @@ def enrich_from_website(website_url, max_items=4):
         if not socials:
             socials = extract_socials(html, base)
 
-        result = inspect_page(html)
+        result = inspect_page(html, host)
         if result is None:
             continue  # bot-protection challenge, move on
         emails, phones = result
