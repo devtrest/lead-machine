@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,11 +16,14 @@ import {
   Users,
   FileText,
   AlertTriangle,
+  Upload,
+  Loader2,
 } from "lucide-react";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { EMAIL_TEMPLATES, getTemplate } from "@/lib/email-templates";
+import { parseLeadsCsv } from "@/lib/parse-leads-csv";
 
 export type ProspectList = {
   id: string;
@@ -63,6 +66,14 @@ export function CampaignWizard({
   const [selectedListIds, setSelectedListIds] = useState<Set<string>>(
     new Set()
   );
+  // Lists the user uploaded from a CSV this session, shown alongside scraped
+  // ones. Merged in front so a fresh import surfaces at the top.
+  const [importedLists, setImportedLists] = useState<ProspectList[]>([]);
+  const [importing, setImporting] = useState(false);
+  const allLists = useMemo(
+    () => [...importedLists, ...prospectLists],
+    [importedLists, prospectLists]
+  );
   const [sequence, setSequence] = useState<Step[]>(() => {
     const t = getTemplate("cold-intro");
     return [
@@ -82,10 +93,56 @@ export function CampaignWizard({
   const [error, setError] = useState<string | null>(null);
 
   const selectedProspectCount = useMemo(() => {
-    return prospectLists
+    return allLists
       .filter((l) => selectedListIds.has(l.id))
       .reduce((sum, l) => sum + l.emailable, 0);
-  }, [prospectLists, selectedListIds]);
+  }, [allLists, selectedListIds]);
+
+  // Read a CSV, create a prospect list from it, then select it.
+  async function importFromFile(file: File) {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const rows = parseLeadsCsv(text);
+      if (rows.length === 0) {
+        toast.error(
+          "No emails found",
+          "Make sure the file is a CSV with an email column."
+        );
+        return;
+      }
+      const listName =
+        file.name.replace(/\.[^.]+$/, "").trim().slice(0, 80) ||
+        "Imported list";
+      const res = await fetch("/api/leads/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: listName, rows }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? "Import failed");
+      const list = json.list as ProspectList;
+      setImportedLists((prev) => [list, ...prev]);
+      setSelectedListIds((prev) => {
+        const next = new Set(prev);
+        next.add(list.id);
+        return next;
+      });
+      toast.success(
+        "Leads imported",
+        `${list.emailable.toLocaleString()} emailable lead${
+          list.emailable === 1 ? "" : "s"
+        } added and selected.`
+      );
+    } catch (e) {
+      toast.error(
+        "Import failed",
+        e instanceof Error ? e.message : "Could not import that file."
+      );
+    } finally {
+      setImporting(false);
+    }
+  }
 
   function next() {
     setError(null);
@@ -178,10 +235,12 @@ export function CampaignWizard({
             <StepBasics name={name} setName={setName} />
           ) : stepIdx === 1 ? (
             <StepProspectLists
-              prospectLists={prospectLists}
+              prospectLists={allLists}
               selectedIds={selectedListIds}
               onChange={setSelectedListIds}
               totalSelected={selectedProspectCount}
+              onImportFile={importFromFile}
+              importing={importing}
             />
           ) : stepIdx === 2 ? (
             <StepSequence sequence={sequence} setSequence={setSequence} />
@@ -365,12 +424,18 @@ function StepProspectLists({
   selectedIds,
   onChange,
   totalSelected,
+  onImportFile,
+  importing,
 }: {
   prospectLists: ProspectList[];
   selectedIds: Set<string>;
   onChange: (s: Set<string>) => void;
   totalSelected: number;
+  onImportFile: (file: File) => void;
+  importing: boolean;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
   function toggle(id: string) {
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id);
@@ -380,12 +445,61 @@ function StepProspectLists({
 
   return (
     <div className="surface-card space-y-4 p-5">
-      <WizardSectionHeading
-        icon={<Folder className="h-4 w-4" />}
-        eyebrow="Step 2 · Prospect lists"
-        title="Pick prospect lists"
-        description="Each list is a niche you scraped earlier. Tick the folders you want to email. Only leads with emails get imported."
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <WizardSectionHeading
+          icon={<Folder className="h-4 w-4" />}
+          eyebrow="Step 2 · Prospect lists"
+          title="Pick prospect lists"
+          description="Tick the scraped lists you want to email — or import your own contacts from a CSV. Only leads with emails get imported."
+        />
+        <div className="shrink-0">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportFile(f);
+              e.target.value = ""; // allow re-importing the same file
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elev)] px-3 py-2 text-xs font-semibold text-[var(--ink-strong)] transition hover:border-[var(--brand-300)] hover:bg-[var(--brand-50)]/40 disabled:opacity-50"
+          >
+            {importing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Upload className="h-3.5 w-3.5" />
+            )}
+            {importing ? "Importing…" : "Import CSV"}
+          </button>
+        </div>
+      </div>
+
+      {prospectLists.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-sunken)]/30 px-4 py-8 text-center">
+          <Upload className="mx-auto h-6 w-6 text-[var(--ink-subtle)]" />
+          <p className="mt-2 text-sm font-medium text-[var(--ink-strong)]">
+            No prospect lists yet
+          </p>
+          <p className="mt-0.5 text-xs text-[var(--ink-muted)]">
+            Scrape leads first, or{" "}
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={importing}
+              className="font-semibold text-[var(--brand-700)] underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              import a CSV
+            </button>{" "}
+            with an email column.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {prospectLists.map((l) => {
