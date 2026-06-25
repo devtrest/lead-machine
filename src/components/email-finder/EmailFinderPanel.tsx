@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -198,6 +198,44 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
     setFeed([]);
   }, [list.missing, list.withEmail]);
 
+  // The scrape runs as a background job on the worker, so it keeps going even
+  // if you switch tabs, navigate away, or the proxy times out. We remember
+  // which list is scraping in localStorage and re-attach to its live progress
+  // when the panel mounts again.
+  const mountedRef = useRef(true);
+  const ACTIVE_KEY = `lm_scrape_active_${list.id}`;
+  const ACTIVE_TTL_MS = 30 * 60 * 1000;
+  const markActive = () => {
+    try {
+      localStorage.setItem(ACTIVE_KEY, String(Date.now()));
+    } catch {}
+  };
+  const clearActive = () => {
+    try {
+      localStorage.removeItem(ACTIVE_KEY);
+    } catch {}
+  };
+  const isActive = () => {
+    try {
+      const t = Number(localStorage.getItem(ACTIVE_KEY) ?? 0);
+      return t > 0 && Date.now() - t < ACTIVE_TTL_MS;
+    } catch {
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    // Re-attach to an in-flight scrape for this list (started before we
+    // navigated away / switched tabs). The worker replays progress or, if it
+    // already finished, the final result.
+    if (isActive()) void runStream(true);
+    return () => {
+      mountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Apply live progress on top of the server snapshot.
   const liveWithEmail = list.withEmail + found;
   const liveMissing = Math.max(0, list.missing - found);
@@ -210,7 +248,7 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
       ? Math.min(100, Math.round((prog.done / prog.total) * 100))
       : 0;
 
-  async function scrape() {
+  function scrape() {
     if (list.missing === 0) {
       toast.success(
         "Nothing to scrape",
@@ -222,35 +260,49 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
       !confirm(
         `Scrape emails for ${list.missing.toLocaleString()} lead${
           list.missing === 1 ? "" : "s"
-        } in “${list.keyword}” that don't have one yet? No credits will be charged.`
+        } in “${list.keyword}” that don't have one yet? No credits will be charged.\n\nThis runs in the background — you can switch tabs or leave this page and it won't stop.`
       )
     ) {
       return;
     }
+    void runStream(false);
+  }
+
+  // Consume the scrape's SSE stream. Used both to START a scrape and to
+  // RE-ATTACH to one already running on the worker. If the stream ends without
+  // a terminal frame (proxy timeout) while the job is still active, we silently
+  // reconnect so progress keeps flowing.
+  async function runStream(isReconnect: boolean) {
     setBusy(true);
     setDone(false);
-    setFound(0);
-    setFeed([]);
-    setProg({ done: 0, total: list.missing });
+    if (!isReconnect) {
+      setFound(0);
+      setFeed([]);
+      setProg({ done: 0, total: list.missing });
+    }
+    markActive();
 
     let final: {
       newEmails?: number;
       attempted?: number;
       remaining?: number;
     } | null = null;
+    let errorMsg: string | null = null;
 
     try {
       const res = await fetch(`/api/scan/runs/${list.id}/reenrich/stream`, {
         method: "POST",
       });
       if (!res.ok || !res.body) {
-        toast.error("Couldn't scrape emails", `Server returned ${res.status}`);
+        clearActive();
+        if (!isReconnect) {
+          toast.error("Couldn't scrape emails", `Server returned ${res.status}`);
+        }
         setBusy(false);
         setProg(null);
         return;
       }
 
-      // Parse the SSE stream frame by frame.
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -286,7 +338,6 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
           if (evt.phase === "progress") {
             setProg({ done: evt.done ?? 0, total: evt.total ?? list.missing });
             setFound(evt.newEmails ?? 0);
-            // The initial frame carries no url; per-site frames do.
             if (evt.url) {
               const url = evt.url;
               const email = evt.email ?? null;
@@ -296,16 +347,21 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
             final = evt;
             setFound(evt.newEmails ?? 0);
           } else if (evt.phase === "error") {
-            throw new Error(evt.message || "Scrape failed");
+            errorMsg = evt.message || "Scrape failed";
           }
         }
       }
+    } catch (err) {
+      errorMsg = err instanceof Error ? err.message : "Scrape failed";
+    }
 
+    // Terminal: the job finished (done) — report + stop.
+    if (final) {
+      clearActive();
       setDone(true);
-      const f = final?.newEmails ?? found;
-      const attempted = final?.attempted ?? 0;
-      const remaining = final?.remaining ?? 0;
-
+      const f = final.newEmails ?? found;
+      const attempted = final.attempted ?? 0;
+      const remaining = final.remaining ?? 0;
       if (f > 0) {
         toast.success(
           `Found ${f} new email${f === 1 ? "" : "s"}`,
@@ -327,15 +383,29 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
         );
       }
       router.refresh();
-    } catch (err) {
-      toast.error(
-        "Couldn't scrape emails",
-        err instanceof Error ? err.message : undefined
-      );
-      setProg(null);
-    } finally {
       setBusy(false);
+      return;
     }
+
+    // The job errored — surface it and stop.
+    if (errorMsg) {
+      clearActive();
+      toast.error("Couldn't scrape emails", errorMsg);
+      setProg(null);
+      setBusy(false);
+      return;
+    }
+
+    // Stream ended with no terminal frame → the proxy timed out but the job is
+    // still running on the worker. Reconnect (if still mounted) to keep the
+    // progress live; otherwise leave the flag so a later mount re-attaches.
+    if (mountedRef.current && isActive()) {
+      setTimeout(() => {
+        if (mountedRef.current) void runStream(true);
+      }, 800);
+      return; // stay "busy" — we're reconnecting
+    }
+    setBusy(false);
   }
 
   return (

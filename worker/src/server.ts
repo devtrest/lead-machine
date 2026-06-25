@@ -10,6 +10,7 @@ import { runOutreachTick } from "./outreach-tick.js";
 import { runInboxCheck } from "./inbox-check.js";
 import { runTrialCharge } from "./trial-charge.js";
 import { runReenrich } from "./reenrich-job.js";
+import { attachReenrich } from "./reenrich-registry.js";
 import { checkPython, type PythonHealth } from "./enrichment.js";
 import { browserStatus } from "./browser-scrape.js";
 
@@ -231,7 +232,9 @@ app.post("/scrape/reenrich", requireAuth, async (req, res) => {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
+    let closed = false;
     const send = (event: unknown) => {
+      if (closed) return;
       try {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       } catch {
@@ -241,6 +244,7 @@ app.post("/scrape/reenrich", requireAuth, async (req, res) => {
     // Heartbeat so intermediaries don't close an idle stream during a slow
     // site crawl where no progress event fires for a while.
     const heartbeat = setInterval(() => {
+      if (closed) return;
       try {
         res.write(": heartbeat\n\n");
       } catch {
@@ -248,26 +252,37 @@ app.post("/scrape/reenrich", requireAuth, async (req, res) => {
       }
     }, 15_000);
 
-    try {
-      // 4 min, not 25s: the headless-Chromium Layer 2 spends ~30s/site and is
-      // concurrency-capped, so a campaign's no-email leads take minutes. The
-      // Vercel proxy route allows 300s, so we stop claiming new leads at 240s
-      // and let in-flight ones finish + emit `done` inside that window. Bigger
-      // lists report `remaining` and the user clicks again.
-      const result = await runReenrich(scanRunId, userId, {
-        deadlineMs: 240_000,
-        onProgress: (p) => send({ phase: "progress", ...p }),
-      });
-      send({ phase: "done", ...result });
-    } catch (err) {
-      send({
-        phase: "error",
-        message: err instanceof Error ? err.message : "Re-enrich failed",
-      });
-    } finally {
+    // ATTACH to a background job (start it if it isn't running). The job runs
+    // to FULL completion regardless of this connection, so switching tabs /
+    // navigating away / the Vercel proxy timing out can't stop it — the client
+    // just reconnects later and resumes the live progress.
+    let unsubscribe = () => {};
+    const finish = () => {
+      if (closed) return;
+      closed = true;
       clearInterval(heartbeat);
-      res.end();
-    }
+      unsubscribe();
+      try {
+        res.end();
+      } catch {
+        /* already closed */
+      }
+    };
+
+    unsubscribe = attachReenrich(scanRunId, userId, (e) => {
+      send(e);
+      const phase = (e as { phase?: string }).phase;
+      if (phase === "done" || phase === "error") finish();
+    });
+
+    // Client went away (tab close / navigation / proxy timeout): stop writing,
+    // detach — but DO NOT stop the job. It keeps running to completion.
+    req.on("close", () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
     return;
   }
 
