@@ -24,7 +24,7 @@ export default async function CampaignDetailPage({
   const { data: campaign } = await supabase
     .from("outreach_campaigns")
     .select(
-      "id,name,status,scan_run_id,created_at,started_at,finished_at,daily_limit,scan_runs(keyword,location)"
+      "id,name,status,scan_run_id,created_at,started_at,finished_at,daily_limit,timezone,send_days,send_window_start,send_window_end,scan_runs(keyword,location)"
     )
     .eq("id", id)
     .eq("user_id", user.id)
@@ -246,6 +246,19 @@ export default async function CampaignDetailPage({
         campaignId={campaign.id}
         initialName={campaign.name}
         initialStatus={campaign.status}
+        initialSchedule={{
+          dailyLimit: (campaign.daily_limit as number) ?? 50,
+          timezone: (campaign.timezone as string) ?? "UTC",
+          sendDays: (campaign.send_days as string[]) ?? [
+            "mon",
+            "tue",
+            "wed",
+            "thu",
+            "fri",
+          ],
+          sendWindowStart: (campaign.send_window_start as string) ?? "09:00",
+          sendWindowEnd: (campaign.send_window_end as string) ?? "17:00",
+        }}
         steps={steps}
         prospects={prospects}
         candidateLeads={candidateLeads}

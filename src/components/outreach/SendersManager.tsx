@@ -607,6 +607,15 @@ function AddSenderForm({
         If the password is wrong, the sender will NOT be saved.
       </div>
 
+      {/* Validation / verification error — kept directly above the action row
+          so a rejected submit is always visible, even on a scrolled page. */}
+      {error ? (
+        <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {error}
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
@@ -626,12 +635,6 @@ function AddSenderForm({
         Daily send pace is configured per campaign, not per sender. Each
         provider&apos;s typical account ceiling is applied automatically.
       </p>
-      {error ? (
-        <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          {error}
-        </div>
-      ) : null}
     </form>
   );
 }

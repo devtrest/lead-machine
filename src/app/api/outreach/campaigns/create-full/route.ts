@@ -40,6 +40,10 @@ export async function POST(req: Request) {
     }[];
     senderIds?: string[];
     dailyLimit?: number;
+    timezone?: string;
+    sendDays?: string[];
+    sendWindowStart?: string;
+    sendWindowEnd?: string;
     startNow?: boolean;
   };
 
@@ -52,6 +56,34 @@ export async function POST(req: Request) {
     Math.min(500, Math.floor(Number(body.dailyLimit) || 50))
   );
   const startNow = Boolean(body.startNow);
+
+  // ---- Schedule (custom; sanitized with safe fallbacks) ----
+  const VALID_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  // Validate the timezone string against the runtime's tz database; fall back
+  // to UTC if it's bogus so a bad client value can't break the send-window check.
+  let timezone = "UTC";
+  if (typeof body.timezone === "string" && body.timezone.trim()) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: body.timezone });
+      timezone = body.timezone;
+    } catch {
+      timezone = "UTC";
+    }
+  }
+  const sendDays = Array.isArray(body.sendDays)
+    ? VALID_DAYS.filter((d) => body.sendDays!.includes(d))
+    : [];
+  const finalSendDays =
+    sendDays.length > 0 ? sendDays : ["mon", "tue", "wed", "thu", "fri"];
+  const sendWindowStart =
+    typeof body.sendWindowStart === "string" && HHMM.test(body.sendWindowStart)
+      ? body.sendWindowStart
+      : "09:00";
+  const sendWindowEnd =
+    typeof body.sendWindowEnd === "string" && HHMM.test(body.sendWindowEnd)
+      ? body.sendWindowEnd
+      : "17:00";
 
   // ---- Validate ----
   if (!name) {
@@ -127,6 +159,10 @@ export async function POST(req: Request) {
       name,
       status: "draft",
       daily_limit: dailyLimit,
+      timezone,
+      send_days: finalSendDays,
+      send_window_start: sendWindowStart,
+      send_window_end: sendWindowEnd,
     })
     .select("id")
     .single();
@@ -253,7 +289,7 @@ export async function POST(req: Request) {
       .update({ next_send_at: nowIso })
       .eq("campaign_id", campaignId)
       .eq("status", "pending");
-    void pokeWorker(); // fire-and-forget
+    void pokeWorker(campaignId); // fire-and-forget
   }
 
   return NextResponse.json({
@@ -264,14 +300,25 @@ export async function POST(req: Request) {
   });
 }
 
-async function pokeWorker(): Promise<void> {
+// Poke the worker in FAST mode for this specific campaign so the first send
+// fires within seconds, regardless of send window / daily limit. This mirrors
+// the detail-page Start button ([id]/start). Without fast mode the freshly
+// created campaign inherits the default 09:00-17:00 UTC window, so a user who
+// ticks "Start now" outside that window would see the campaign go active but
+// never send — the exact "looks broken" trap documented in [id]/start.
+// Follow-up steps still go through normal ticks that respect the window.
+async function pokeWorker(campaignId: string): Promise<void> {
   const workerUrl = process.env.WORKER_URL?.trim();
   const workerToken = process.env.WORKER_TOKEN?.trim();
   if (!workerUrl || !workerToken) return;
   try {
     await fetch(`${workerUrl.replace(/\/$/, "")}/outreach/tick`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${workerToken}` },
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ fast: true, campaignId }),
     });
   } catch (err) {
     console.error("[create-full] worker poke failed:", err);

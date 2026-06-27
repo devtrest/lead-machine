@@ -1,4 +1,4 @@
--- Outreach v3 additions: multi-sender accounts, open tracking, campaign↔
+ \\\\\\\\\\\\-- Outreach v3 additions: multi-sender accounts, open tracking, campaign↔
 -- sender mapping. Run AFTER outreach_v2.sql. Idempotent.
 
 ------------------------------------------------------------------------------

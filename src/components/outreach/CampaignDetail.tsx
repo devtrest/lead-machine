@@ -2,9 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Pause, Trash2, Check, AlertTriangle, Zap } from "lucide-react";
+import {
+  Play,
+  Pause,
+  Trash2,
+  Check,
+  AlertTriangle,
+  Zap,
+  CalendarClock,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ScheduleFields } from "@/components/outreach/ScheduleFields";
 import {
   SequenceEditor,
   type SequenceStep,
@@ -20,10 +29,19 @@ import {
 } from "@/components/outreach/CampaignStatsBar";
 import { type TestSender } from "@/components/outreach/TestSendCard";
 
+export type CampaignSchedule = {
+  dailyLimit: number;
+  timezone: string;
+  sendDays: string[];
+  sendWindowStart: string;
+  sendWindowEnd: string;
+};
+
 export function CampaignDetail({
   campaignId,
   initialName,
   initialStatus,
+  initialSchedule,
   steps,
   prospects,
   candidateLeads,
@@ -34,6 +52,7 @@ export function CampaignDetail({
   campaignId: string;
   initialName: string;
   initialStatus: string;
+  initialSchedule: CampaignSchedule;
   steps: SequenceStep[];
   prospects: Prospect[];
   candidateLeads: CandidateLead[];
@@ -264,6 +283,11 @@ export function CampaignDetail({
 
       <CampaignStatsBar stats={stats} />
 
+      <ScheduleEditor
+        campaignId={campaignId}
+        initial={initialSchedule}
+      />
+
       <SequenceEditor
         campaignId={campaignId}
         initialSteps={steps}
@@ -275,6 +299,157 @@ export function CampaignDetail({
         initialProspects={prospects}
         candidateLeads={candidateLeads}
       />
+    </div>
+  );
+}
+
+// Editable schedule for an existing campaign. Persists via PATCH and only
+// enables Save when something actually changed. Editing the schedule of an
+// active campaign is allowed — the worker reads these on its next tick, so a
+// change takes effect immediately for ongoing/follow-up sends.
+function ScheduleEditor({
+  campaignId,
+  initial,
+}: {
+  campaignId: string;
+  initial: CampaignSchedule;
+}) {
+  const router = useRouter();
+  const [dailyLimit, setDailyLimit] = useState(initial.dailyLimit);
+  const [timezone, setTimezone] = useState(initial.timezone);
+  const [sendDays, setSendDays] = useState<string[]>(initial.sendDays);
+  const [sendWindowStart, setSendWindowStart] = useState(
+    initial.sendWindowStart
+  );
+  const [sendWindowEnd, setSendWindowEnd] = useState(initial.sendWindowEnd);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty =
+    dailyLimit !== initial.dailyLimit ||
+    timezone !== initial.timezone ||
+    sendWindowStart !== initial.sendWindowStart ||
+    sendWindowEnd !== initial.sendWindowEnd ||
+    sendDays.join(",") !== initial.sendDays.join(",");
+
+  async function save() {
+    setError(null);
+    if (sendDays.length === 0) {
+      setError("Pick at least one send day.");
+      return;
+    }
+    if (sendWindowStart >= sendWindowEnd) {
+      setError("Send window end must be after start.");
+      return;
+    }
+    setSaving(true);
+    const res = await fetch(`/api/outreach/campaigns/${campaignId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dailyLimit,
+        timezone,
+        sendDays,
+        sendWindowStart,
+        sendWindowEnd,
+      }),
+    });
+    setSaving(false);
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(json.error ?? "Couldn't save schedule.");
+      return;
+    }
+    setSavedAt(Date.now());
+    router.refresh();
+  }
+
+  return (
+    <div className="surface-card space-y-5 p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+          <CalendarClock className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-[var(--ink-strong)]">
+            Schedule
+          </h2>
+          <p className="mt-1 text-xs text-[var(--ink-muted)]">
+            When ongoing sends and follow-ups go out. Changes apply on the
+            worker&apos;s next tick — use &quot;Send all now&quot; above to
+            bypass this entirely for an instant blast.
+          </p>
+        </div>
+      </div>
+
+      {/* Daily pace */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-40">
+          <Input
+            label="Emails per day"
+            type="number"
+            min={1}
+            max={500}
+            value={dailyLimit}
+            onChange={(e) =>
+              setDailyLimit(
+                Math.max(1, Math.min(500, Number(e.target.value) || 50))
+              )
+            }
+          />
+        </div>
+        <div className="flex items-center gap-1.5 pb-1">
+          {[25, 50, 100].map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => setDailyLimit(preset)}
+              className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
+                dailyLimit === preset
+                  ? "border-[var(--brand-500)] bg-[var(--brand-50)] text-[var(--brand-700)]"
+                  : "border-[var(--border)] text-[var(--ink-muted)] hover:border-[var(--brand-300)]"
+              }`}
+            >
+              {preset}/day
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ScheduleFields
+        timezone={timezone}
+        setTimezone={setTimezone}
+        sendDays={sendDays}
+        setSendDays={setSendDays}
+        sendWindowStart={sendWindowStart}
+        setSendWindowStart={setSendWindowStart}
+        sendWindowEnd={sendWindowEnd}
+        setSendWindowEnd={setSendWindowEnd}
+      />
+
+      {error ? (
+        <div className="flex items-start gap-2 rounded-lg border border-[var(--danger-100)] bg-[var(--danger-50)] px-3 py-2 text-xs text-[var(--danger-700)]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {error}
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          loading={saving}
+        >
+          Save schedule
+        </Button>
+        {savedAt && Date.now() - savedAt < 4000 ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--success-700)]">
+            <Check className="h-3 w-3" /> Saved
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

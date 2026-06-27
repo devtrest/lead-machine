@@ -18,12 +18,14 @@ import {
   AlertTriangle,
   Upload,
   Loader2,
+  CalendarClock,
 } from "lucide-react";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { EMAIL_TEMPLATES, getTemplate } from "@/lib/email-templates";
 import { parseLeadsCsv } from "@/lib/parse-leads-csv";
+import { ScheduleFields, detectTimezone } from "@/components/outreach/ScheduleFields";
 
 export type ProspectList = {
   id: string;
@@ -89,6 +91,19 @@ export function CampaignWizard({
     () => new Set(senders.length === 1 ? [senders[0].id] : [])
   );
   const [dailyLimit, setDailyLimit] = useState(50);
+  // ---- Schedule (custom; falls back to sensible defaults) ----
+  // Timezone defaults to the user's browser zone so the send window means what
+  // they expect locally, instead of the old hardcoded UTC.
+  const [timezone, setTimezone] = useState<string>(() => detectTimezone());
+  const [sendDays, setSendDays] = useState<string[]>([
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+  ]);
+  const [sendWindowStart, setSendWindowStart] = useState("09:00");
+  const [sendWindowEnd, setSendWindowEnd] = useState("17:00");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -180,6 +195,14 @@ export function CampaignWizard({
       );
       return;
     }
+    if (sendDays.length === 0) {
+      setError("Pick at least one day for the send schedule.");
+      return;
+    }
+    if (sendWindowStart >= sendWindowEnd) {
+      setError("Send window end time must be after the start time.");
+      return;
+    }
     setSubmitting(true);
     const res = await fetch("/api/outreach/campaigns/create-full", {
       method: "POST",
@@ -195,6 +218,10 @@ export function CampaignWizard({
         })),
         senderIds: Array.from(selectedSenderIds),
         dailyLimit,
+        timezone,
+        sendDays,
+        sendWindowStart,
+        sendWindowEnd,
         startNow,
       }),
     });
@@ -251,6 +278,14 @@ export function CampaignWizard({
               setSelectedSenderIds={setSelectedSenderIds}
               dailyLimit={dailyLimit}
               setDailyLimit={setDailyLimit}
+              timezone={timezone}
+              setTimezone={setTimezone}
+              sendDays={sendDays}
+              setSendDays={setSendDays}
+              sendWindowStart={sendWindowStart}
+              setSendWindowStart={setSendWindowStart}
+              sendWindowEnd={sendWindowEnd}
+              setSendWindowEnd={setSendWindowEnd}
               summary={{
                 name,
                 listsCount: selectedListIds.size,
@@ -738,12 +773,43 @@ function StepSequence({
   );
 }
 
+function ScheduleCard(props: {
+  timezone: string;
+  setTimezone: (v: string) => void;
+  sendDays: string[];
+  setSendDays: (v: string[]) => void;
+  sendWindowStart: string;
+  setSendWindowStart: (v: string) => void;
+  sendWindowEnd: string;
+  setSendWindowEnd: (v: string) => void;
+}) {
+  return (
+    <div className="surface-card space-y-5 p-5">
+      <WizardSectionHeading
+        icon={<CalendarClock className="h-4 w-4" />}
+        eyebrow="Step 4 · Schedule"
+        title="When to send"
+        description="Follow-ups and ongoing sends only go out on these days, inside this window, in your timezone. The first email goes immediately when you hit Save & start."
+      />
+      <ScheduleFields {...props} />
+    </div>
+  );
+}
+
 function StepSendersAndStart({
   senders,
   selectedSenderIds,
   setSelectedSenderIds,
   dailyLimit,
   setDailyLimit,
+  timezone,
+  setTimezone,
+  sendDays,
+  setSendDays,
+  sendWindowStart,
+  setSendWindowStart,
+  sendWindowEnd,
+  setSendWindowEnd,
   summary,
 }: {
   senders: WizardSender[];
@@ -751,6 +817,14 @@ function StepSendersAndStart({
   setSelectedSenderIds: (s: Set<string>) => void;
   dailyLimit: number;
   setDailyLimit: (v: number) => void;
+  timezone: string;
+  setTimezone: (v: string) => void;
+  sendDays: string[];
+  setSendDays: (v: string[]) => void;
+  sendWindowStart: string;
+  setSendWindowStart: (v: string) => void;
+  sendWindowEnd: string;
+  setSendWindowEnd: (v: string) => void;
   summary: {
     name: string;
     listsCount: number;
@@ -824,6 +898,17 @@ function StepSendersAndStart({
           </div>
         ) : null}
       </div>
+
+      <ScheduleCard
+        timezone={timezone}
+        setTimezone={setTimezone}
+        sendDays={sendDays}
+        setSendDays={setSendDays}
+        sendWindowStart={sendWindowStart}
+        setSendWindowStart={setSendWindowStart}
+        sendWindowEnd={sendWindowEnd}
+        setSendWindowEnd={setSendWindowEnd}
+      />
 
       <div className="surface-card space-y-4 p-5">
         <WizardSectionHeading
@@ -935,6 +1020,20 @@ function StepSendersAndStart({
             </dt>
             <dd className="mt-1 font-medium tabular-nums text-[var(--ink-strong)]">
               {dailyLimit}/day
+            </dd>
+          </div>
+          <div className="bg-[var(--surface-elev)] p-3.5">
+            <dt className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-subtle)]">
+              Schedule
+            </dt>
+            <dd className="mt-1 font-medium text-[var(--ink-strong)]">
+              {sendDays.length === 7
+                ? "Every day"
+                : `${sendDays.length} day${sendDays.length === 1 ? "" : "s"}`}
+              , {sendWindowStart}–{sendWindowEnd}
+              <span className="block text-[11px] font-normal text-[var(--ink-subtle)]">
+                {timezone.replace(/_/g, " ")}
+              </span>
             </dd>
           </div>
         </dl>
