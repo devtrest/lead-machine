@@ -102,7 +102,14 @@ export default async function InboxPage() {
     };
   });
 
-  const unreadCount = replies.filter((r) => !r.readAt).length;
+  // Unread badge reflects the default inbox view, which hides replies from
+  // disconnected senders — so only count unread from currently connected ones.
+  const connectedSenderIds = new Set(
+    (sendersRaw as { id: string }[]).map((s) => s.id)
+  );
+  const unreadCount = replies.filter(
+    (r) => !r.readAt && r.senderId && connectedSenderIds.has(r.senderId)
+  ).length;
 
   // Bucket reply counts per sender so the strip can show "3 replies" badges.
   const repliesBySender = new Map<string, number>();
