@@ -18,6 +18,7 @@ export type ConnectedSender = {
   lastCheckedAt: string | null;
   lastError: string | null;
   replyCount: number;
+  sentCount: number;
 };
 
 // Visual strip at the top of the Inbox showing every connected Gmail account
@@ -31,8 +32,14 @@ export type ConnectedSender = {
 // aren't (paused, or last_error is populated).
 export function ConnectedInboxesStrip({
   senders,
+  selectedId,
+  onSelect,
 }: {
   senders: ConnectedSender[];
+  // When provided, the chips become clickable filters. selectedId highlights
+  // the active mailbox; clicking calls onSelect (parent toggles).
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
 }) {
   if (senders.length === 0) {
     return (
@@ -56,6 +63,11 @@ export function ConnectedInboxesStrip({
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--ink-subtle)]">
           Connected inboxes ({senders.length})
+          {onSelect ? (
+            <span className="ml-2 normal-case tracking-normal text-[var(--ink-subtle)]">
+              · click a mailbox to see its activity
+            </span>
+          ) : null}
         </span>
         <Link
           href="/user/senders"
@@ -82,7 +94,11 @@ export function ConnectedInboxesStrip({
             }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
-            <SenderChip sender={s} />
+            <SenderChip
+              sender={s}
+              selected={selectedId === s.id}
+              onSelect={onSelect ? () => onSelect(s.id) : undefined}
+            />
           </motion.div>
         ))}
       </motion.div>
@@ -90,7 +106,15 @@ export function ConnectedInboxesStrip({
   );
 }
 
-function SenderChip({ sender }: { sender: ConnectedSender }) {
+function SenderChip({
+  sender,
+  selected,
+  onSelect,
+}: {
+  sender: ConnectedSender;
+  selected: boolean;
+  onSelect?: () => void;
+}) {
   const statusStyles =
     sender.status === "active" && !sender.lastError
       ? "border-[var(--success-100)] bg-[var(--success-50)]/60"
@@ -98,9 +122,23 @@ function SenderChip({ sender }: { sender: ConnectedSender }) {
         ? "border-[var(--warning-100)] bg-[var(--warning-50)]/60"
         : "border-[var(--danger-100)] bg-[var(--danger-50)]/60";
 
+  const selectable = Boolean(onSelect);
+  const interactive = selectable
+    ? `cursor-pointer transition hover:shadow-[var(--shadow-sm)] ${
+        selected
+          ? "ring-2 ring-[var(--brand-500)] ring-offset-1"
+          : "hover:border-[var(--brand-300)]"
+      }`
+    : "";
+
   return (
-    <div
-      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 ${statusStyles}`}
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={!selectable}
+      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left ${statusStyles} ${interactive} ${
+        selectable ? "" : "cursor-default"
+      }`}
       title={sender.lastError ?? undefined}
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/80">
@@ -115,19 +153,27 @@ function SenderChip({ sender }: { sender: ConnectedSender }) {
             </span>
           </span>
           {sender.replyCount > 0 ? (
-            <span className="shrink-0 rounded-full bg-[var(--brand-600)] px-1.5 py-0.5 text-[9px] font-bold text-white">
+            <span
+              className="shrink-0 rounded-full bg-[var(--brand-600)] px-1.5 py-0.5 text-[9px] font-bold text-white"
+              title={`${sender.replyCount} replies`}
+            >
               {sender.replyCount}
             </span>
           ) : null}
         </div>
-        <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-[var(--ink-subtle)]">
-          <Clock className="h-2.5 w-2.5" />
-          {sender.lastCheckedAt
-            ? `polled ${timeAgo(sender.lastCheckedAt)}`
-            : "not polled yet"}
+        <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--ink-subtle)]">
+          <span className="inline-flex items-center gap-1">
+            <Clock className="h-2.5 w-2.5" />
+            {sender.lastCheckedAt
+              ? `polled ${timeAgo(sender.lastCheckedAt)}`
+              : "not polled yet"}
+          </span>
+          <span className="font-semibold text-[var(--ink-muted)]">
+            {sender.sentCount} sent
+          </span>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

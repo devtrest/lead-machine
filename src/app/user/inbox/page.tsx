@@ -1,9 +1,10 @@
-import Link from "next/link";
-import { Inbox, Reply } from "lucide-react";
+import { Reply } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { UniboxList } from "@/components/outreach/UniboxList";
 import { InboxCheckButton } from "@/components/outreach/InboxCheckButton";
-import { ConnectedInboxesStrip } from "@/components/outreach/ConnectedInboxesStrip";
+import {
+  InboxWorkspace,
+  type SenderContact,
+} from "@/components/outreach/InboxWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -110,6 +111,74 @@ export default async function InboxPage() {
     repliesBySender.set(r.senderId, (repliesBySender.get(r.senderId) ?? 0) + 1);
   }
 
+  // ---- Per-sender activity: which prospects each mailbox emailed, with sent
+  // counts, opens, and whether they replied. Built from email_sends (sent +
+  // opens) merged with the replies above. Wrapped defensively: if the
+  // email_sends.sender_id migration isn't applied, the select errors and we
+  // fall back to reply-only activity (sent counts show 0). -----------------
+  const activityBySender: Record<string, SenderContact[]> = {};
+  {
+    const sendsActivityRes = await supabase
+      .from("email_sends")
+      .select("sender_id,recipient_email,status,first_opened_at,leads(name)")
+      .eq("user_id", user!.id)
+      .limit(5000);
+
+    const bySender = new Map<string, Map<string, SenderContact>>();
+    const ensure = (sid: string, email: string): SenderContact => {
+      const key = email.toLowerCase();
+      let m = bySender.get(sid);
+      if (!m) {
+        m = new Map();
+        bySender.set(sid, m);
+      }
+      let c = m.get(key);
+      if (!c) {
+        c = { email, name: null, sent: 0, opened: 0, replied: false };
+        m.set(key, c);
+      }
+      return c;
+    };
+
+    if (!sendsActivityRes.error) {
+      for (const row of sendsActivityRes.data ?? []) {
+        const sid = (row.sender_id as string | null) ?? null;
+        if (!sid) continue;
+        if (row.status !== "sent") continue;
+        const rcpt = row.recipient_email as string | null;
+        if (!rcpt) continue;
+        const lead = Array.isArray(row.leads) ? row.leads[0] ?? null : row.leads;
+        const c = ensure(sid, rcpt);
+        c.sent += 1;
+        if (row.first_opened_at) c.opened += 1;
+        if (!c.name && lead && (lead as { name?: string }).name) {
+          c.name = (lead as { name: string }).name;
+        }
+      }
+    }
+    // Merge reply state in (also surfaces prospects whose only record is a reply).
+    for (const r of replies) {
+      if (!r.senderId) continue;
+      const c = ensure(r.senderId, r.fromEmail);
+      c.replied = true;
+      if (!c.name && r.fromName) c.name = r.fromName;
+    }
+
+    for (const [sid, m] of bySender.entries()) {
+      activityBySender[sid] = Array.from(m.values()).sort(
+        (a, b) => b.sent - a.sent || (b.replied ? 1 : 0) - (a.replied ? 1 : 0)
+      );
+    }
+  }
+
+  const sentBySender = new Map<string, number>();
+  for (const [sid, contacts] of Object.entries(activityBySender)) {
+    sentBySender.set(
+      sid,
+      contacts.reduce((n, c) => n + c.sent, 0)
+    );
+  }
+
   type SenderRow = {
     id: string;
     email: string;
@@ -126,6 +195,7 @@ export default async function InboxPage() {
     lastCheckedAt: s.last_inbox_check_at,
     lastError: s.last_error,
     replyCount: repliesBySender.get(s.id) ?? 0,
+    sentCount: sentBySender.get(s.id) ?? 0,
   }));
 
   return (
@@ -160,31 +230,11 @@ export default async function InboxPage() {
         </div>
       </section>
 
-      <ConnectedInboxesStrip senders={senders} />
-
-      {replies.length === 0 ? (
-        <div className="surface-card p-12 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
-            <Inbox className="h-6 w-6" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold text-[var(--ink-strong)]">
-            No replies yet
-          </h3>
-          <p className="mx-auto mt-2 max-w-md text-sm text-[var(--ink-muted)]">
-            When a lead replies to one of your outreach emails, it lands
-            here. The worker checks IMAP on each connected sender every 10
-            minutes — or hit Check now above for an instant poll.
-          </p>
-          <Link
-            href="/user/senders"
-            className="mt-6 inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-600)] px-5 py-2.5 text-sm font-semibold text-white shadow-[var(--shadow-sm)] transition hover:bg-[var(--brand-700)]"
-          >
-            Manage senders
-          </Link>
-        </div>
-      ) : (
-        <UniboxList replies={replies} />
-      )}
+      <InboxWorkspace
+        replies={replies}
+        senders={senders}
+        activityBySender={activityBySender}
+      />
     </div>
   );
 }
