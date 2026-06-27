@@ -172,6 +172,7 @@ export default async function InboxPage() {
         // Sent-folder message (Gmail-style list).
         (sentBySender[sid] ??= []).push({
           id: row.id as string,
+          from: senderMetaById.get(sid)?.email ?? "",
           to: rcpt,
           toName: leadName,
           subject: (row.subject as string | null) ?? "(no subject)",

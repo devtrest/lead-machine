@@ -34,12 +34,18 @@ export function ConnectedInboxesStrip({
   senders,
   selectedId,
   onSelect,
+  allSelected,
+  onSelectAll,
 }: {
   senders: ConnectedSender[];
   // When provided, the chips become clickable filters. selectedId highlights
   // the active mailbox; clicking calls onSelect (parent toggles).
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  // When provided, renders a leading "All mailboxes" chip that aggregates
+  // every connected sender. allSelected highlights it.
+  allSelected?: boolean;
+  onSelectAll?: () => void;
 }) {
   if (senders.length === 0) {
     return (
@@ -85,6 +91,37 @@ export function ConnectedInboxesStrip({
         }}
         className="flex flex-wrap gap-2"
       >
+        {onSelectAll ? (
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 4 },
+              show: { opacity: 1, y: 0 },
+            }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className={`flex h-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left transition hover:shadow-[var(--shadow-sm)] ${
+                allSelected
+                  ? "border-[var(--brand-500)] bg-[var(--brand-50)] ring-2 ring-[var(--brand-500)] ring-offset-1"
+                  : "border-[var(--border)] bg-[var(--surface-elev)] hover:border-[var(--brand-300)]"
+              }`}
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/80 text-[var(--brand-700)]">
+                <AtSign className="h-3.5 w-3.5" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-[var(--ink-strong)]">
+                  All mailboxes
+                </div>
+                <div className="mt-0.5 text-[10px] text-[var(--ink-subtle)]">
+                  every connected sender
+                </div>
+              </div>
+            </button>
+          </motion.div>
+        ) : null}
         {senders.map((s) => (
           <motion.div
             key={s.id}

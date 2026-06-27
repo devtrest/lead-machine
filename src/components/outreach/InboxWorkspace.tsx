@@ -30,6 +30,7 @@ export type SenderContact = {
 // One outgoing email shown in a mailbox's Sent folder.
 export type SentMessage = {
   id: string;
+  from: string;
   to: string;
   toName: string | null;
   subject: string;
@@ -55,10 +56,8 @@ export function InboxWorkspace({
   activityBySender: Record<string, SenderContact[]>;
   sentBySender: Record<string, SentMessage[]>;
 }) {
-  const [selectedSenderId, setSelectedSenderId] = useState<string | null>(
-    () =>
-      senders.find((s) => s.status === "active")?.id ?? senders[0]?.id ?? null
-  );
+  // null = "All mailboxes" (default): aggregate across every connected sender.
+  const [selectedSenderId, setSelectedSenderId] = useState<string | null>(null);
   const [folder, setFolder] = useState<Folder>("inbox");
 
   const selectedSender = useMemo(
@@ -66,19 +65,55 @@ export function InboxWorkspace({
     [senders, selectedSenderId]
   );
 
-  const inboxReplies = useMemo(
-    () =>
-      selectedSenderId
-        ? replies.filter((r) => r.senderId === selectedSenderId)
-        : [],
-    [replies, selectedSenderId]
+  const knownSenderIds = useMemo(
+    () => new Set(senders.map((s) => s.id)),
+    [senders]
   );
-  const sentMessages = selectedSenderId
-    ? sentBySender[selectedSenderId] ?? []
-    : [];
-  const contacts = selectedSenderId
-    ? activityBySender[selectedSenderId] ?? []
-    : [];
+
+  // Inbox: a specific mailbox → its replies; All → every reply from a
+  // currently-connected mailbox (disconnected/test replies excluded).
+  const inboxReplies = useMemo(() => {
+    if (selectedSenderId) {
+      return replies.filter((r) => r.senderId === selectedSenderId);
+    }
+    return replies.filter(
+      (r) => r.senderId && knownSenderIds.has(r.senderId)
+    );
+  }, [replies, selectedSenderId, knownSenderIds]);
+
+  // Sent: a specific mailbox → its sent mail; All → every mailbox's sent mail,
+  // newest first.
+  const sentMessages = useMemo(() => {
+    if (selectedSenderId) return sentBySender[selectedSenderId] ?? [];
+    const all = senders.flatMap((s) => sentBySender[s.id] ?? []);
+    return all.sort((a, b) =>
+      (b.sentAt ?? "").localeCompare(a.sentAt ?? "")
+    );
+  }, [sentBySender, selectedSenderId, senders]);
+
+  // Prospects: a specific mailbox → its contacts; All → contacts merged by
+  // email across mailboxes (sum sent/opened, OR replied).
+  const contacts = useMemo(() => {
+    if (selectedSenderId) return activityBySender[selectedSenderId] ?? [];
+    const merged = new Map<string, SenderContact>();
+    for (const s of senders) {
+      for (const c of activityBySender[s.id] ?? []) {
+        const key = c.email.toLowerCase();
+        const existing = merged.get(key);
+        if (existing) {
+          existing.sent += c.sent;
+          existing.opened += c.opened;
+          existing.replied = existing.replied || c.replied;
+          if (!existing.name && c.name) existing.name = c.name;
+        } else {
+          merged.set(key, { ...c });
+        }
+      }
+    }
+    return Array.from(merged.values()).sort(
+      (a, b) => b.sent - a.sent || (b.replied ? 1 : 0) - (a.replied ? 1 : 0)
+    );
+  }, [activityBySender, selectedSenderId, senders]);
 
   if (senders.length === 0) {
     return (
@@ -130,25 +165,29 @@ export function InboxWorkspace({
         senders={senders}
         selectedId={selectedSenderId}
         onSelect={(id) => setSelectedSenderId(id)}
+        allSelected={selectedSenderId === null}
+        onSelectAll={() => setSelectedSenderId(null)}
       />
 
       {/* Mailbox header + folder tabs */}
       <div className="space-y-3">
-        {selectedSender ? (
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
-              <Mail className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-[var(--ink-strong)]">
-                {selectedSender.displayName || selectedSender.email.split("@")[0]}
-              </div>
-              <div className="truncate text-xs text-[var(--ink-muted)]">
-                {selectedSender.email}
-              </div>
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+            <Mail className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-[var(--ink-strong)]">
+              {selectedSender
+                ? selectedSender.displayName || selectedSender.email.split("@")[0]
+                : "All mailboxes"}
+            </div>
+            <div className="truncate text-xs text-[var(--ink-muted)]">
+              {selectedSender
+                ? selectedSender.email
+                : `${senders.length} connected sender${senders.length === 1 ? "" : "s"} combined`}
             </div>
           </div>
-        ) : null}
+        </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
           {FOLDERS.map((f) => {
@@ -195,14 +234,19 @@ export function InboxWorkspace({
             inboxReplies.length === 0 ? (
               <EmptyFolder
                 label={`No replies in ${
-                  selectedSender?.displayName || selectedSender?.email || "this mailbox"
+                  selectedSender?.displayName ||
+                  selectedSender?.email ||
+                  "your mailboxes"
                 } yet.`}
               />
             ) : (
               <UniboxList replies={inboxReplies} />
             )
           ) : folder === "sent" ? (
-            <SentList messages={sentMessages} senderEmail={selectedSender?.email ?? ""} />
+            <SentList
+              messages={sentMessages}
+              showFrom={selectedSenderId === null}
+            />
           ) : (
             <ContactsTable contacts={contacts} />
           )}
@@ -225,10 +269,10 @@ function EmptyFolder({ label }: { label: string }) {
 // the right. Read-only (these already went out).
 function SentList({
   messages,
-  senderEmail,
+  showFrom,
 }: {
   messages: SentMessage[];
-  senderEmail: string;
+  showFrom: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(
     () => messages[0]?.id ?? null
@@ -271,6 +315,11 @@ function SentList({
                     {m.subject}
                   </div>
                   <div className="mt-1 flex items-center gap-1.5">
+                    {showFrom && m.from ? (
+                      <span className="shrink-0 truncate rounded bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--ink-muted)]">
+                        from {m.from.split("@")[0]}
+                      </span>
+                    ) : null}
                     <span className="truncate text-[11px] text-[var(--ink-muted)]">
                       {m.to}
                     </span>
@@ -297,7 +346,7 @@ function SentList({
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px]">
               <span className="text-[var(--ink-subtle)]">From</span>
               <span className="font-semibold text-[var(--ink-strong)]">
-                {senderEmail}
+                {selected.from || "—"}
               </span>
               <span className="text-[var(--ink-subtle)]">→ To</span>
               <span className="font-semibold text-[var(--ink-strong)]">
