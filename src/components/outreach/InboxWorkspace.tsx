@@ -10,6 +10,10 @@ import {
   Eye,
   Reply as ReplyIcon,
   CheckCircle2,
+  AlertTriangle,
+  Pause,
+  ChevronRight,
+  Clock,
 } from "lucide-react";
 import {
   ConnectedInboxesStrip,
@@ -64,7 +68,7 @@ export function InboxWorkspace({
         }
       />
 
-      <AnimatePresence initial={false}>
+      <AnimatePresence initial={false} mode="wait">
         {selectedSender ? (
           <motion.div
             key={selectedSender.id}
@@ -78,6 +82,20 @@ export function InboxWorkspace({
               sender={selectedSender}
               contacts={activityBySender[selectedSender.id] ?? []}
               onClear={() => setSelectedSenderId(null)}
+            />
+          </motion.div>
+        ) : senders.length > 0 ? (
+          <motion.div
+            key="overview"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <AllSendersOverview
+              senders={senders}
+              activityBySender={activityBySender}
+              onSelect={(id) => setSelectedSenderId(id)}
             />
           </motion.div>
         ) : null}
@@ -117,6 +135,145 @@ export function InboxWorkspace({
       )}
     </div>
   );
+}
+
+// One-place summary of every connected mailbox: what each sent + received,
+// with its details (status, last polled). Rows are clickable to drill into a
+// mailbox's per-prospect activity.
+function AllSendersOverview({
+  senders,
+  activityBySender,
+  onSelect,
+}: {
+  senders: ConnectedSender[];
+  activityBySender: Record<string, SenderContact[]>;
+  onSelect: (id: string) => void;
+}) {
+  const rows = senders.map((s) => {
+    const contacts = activityBySender[s.id] ?? [];
+    const sent = contacts.reduce((n, c) => n + c.sent, 0) || s.sentCount;
+    const opened = contacts.reduce((n, c) => n + c.opened, 0);
+    const replied = contacts.filter((c) => c.replied).length;
+    return { sender: s, sent, opened, replied, received: s.replyCount };
+  });
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      sent: acc.sent + r.sent,
+      opened: acc.opened + r.opened,
+      received: acc.received + r.received,
+    }),
+    { sent: 0, opened: 0, received: 0 }
+  );
+
+  return (
+    <div className="surface-card space-y-4 p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brand-50)] to-[var(--brand-100)] text-[var(--brand-700)] ring-1 ring-inset ring-[var(--brand-100)]">
+          <Mail className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-[var(--ink-strong)]">
+            All mailboxes
+          </h2>
+          <p className="mt-1 text-xs text-[var(--ink-muted)]">
+            {totals.sent} sent · {totals.opened} opened · {totals.received}{" "}
+            received across {senders.length} connected mailbox
+            {senders.length === 1 ? "" : "es"}. Click a row for its prospects.
+          </p>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+        <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 border-b border-[var(--border)] bg-[var(--surface-sunken)]/50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-[var(--ink-subtle)]">
+          <span>Mailbox</span>
+          <span className="text-right">Sent</span>
+          <span className="text-right">Opened</span>
+          <span className="text-right">Received</span>
+          <span />
+        </div>
+        <ul className="divide-y divide-[var(--border)]/70">
+          {rows.map(({ sender: s, sent, opened, received }) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(s.id)}
+                className="grid w-full grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 px-4 py-3 text-left transition hover:bg-[var(--surface-sunken)]/40"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <SenderStatusDot
+                    status={s.status}
+                    hasError={Boolean(s.lastError)}
+                  />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-[var(--ink-strong)]">
+                      {s.displayName || s.email.split("@")[0]}
+                    </div>
+                    <div className="flex items-center gap-2 truncate text-xs text-[var(--ink-muted)]">
+                      <span className="truncate">{s.email}</span>
+                      <span className="hidden items-center gap-1 text-[var(--ink-subtle)] sm:inline-flex">
+                        <Clock className="h-2.5 w-2.5" />
+                        {s.lastCheckedAt
+                          ? `polled ${timeAgo(s.lastCheckedAt)}`
+                          : "not polled yet"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <span className="inline-flex items-center justify-end gap-1 tabular-nums text-[var(--ink-strong)]">
+                  <Mail className="h-3.5 w-3.5 text-[var(--ink-subtle)]" />
+                  {sent}
+                </span>
+                <span className="inline-flex items-center justify-end gap-1 tabular-nums text-[var(--ink-strong)]">
+                  <Eye className="h-3.5 w-3.5 text-[var(--ink-subtle)]" />
+                  {opened}
+                </span>
+                <span
+                  className={`inline-flex items-center justify-end gap-1 tabular-nums ${
+                    received > 0
+                      ? "font-semibold text-[var(--success-700)]"
+                      : "text-[var(--ink-strong)]"
+                  }`}
+                >
+                  <ReplyIcon className="h-3.5 w-3.5 text-[var(--ink-subtle)]" />
+                  {received}
+                </span>
+                <ChevronRight className="h-4 w-4 text-[var(--ink-subtle)]" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function SenderStatusDot({
+  status,
+  hasError,
+}: {
+  status: string;
+  hasError: boolean;
+}) {
+  if (hasError || status === "error")
+    return <AlertTriangle className="h-4 w-4 shrink-0 text-[var(--danger-700)]" />;
+  if (status === "paused")
+    return <Pause className="h-4 w-4 shrink-0 text-[var(--warning-700)]" />;
+  return (
+    <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--success-700)]" />
+  );
+}
+
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
 }
 
 function SenderActivityPanel({
