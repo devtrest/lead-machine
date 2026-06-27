@@ -15,6 +15,10 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ScheduleFields } from "@/components/outreach/ScheduleFields";
 import {
+  SenderBreakdown,
+  type SenderActivity,
+} from "@/components/outreach/SenderBreakdown";
+import {
   SequenceEditor,
   type SequenceStep,
 } from "@/components/outreach/SequenceEditor";
@@ -46,6 +50,7 @@ export function CampaignDetail({
   prospects,
   candidateLeads,
   stats,
+  senderActivity,
   senders,
   attachedSenderIds,
 }: {
@@ -57,6 +62,7 @@ export function CampaignDetail({
   prospects: Prospect[];
   candidateLeads: CandidateLead[];
   stats: CampaignStats;
+  senderActivity: SenderActivity[];
   senders: TestSender[];
   attachedSenderIds: string[];
 }) {
@@ -282,6 +288,8 @@ export function CampaignDetail({
       </div>
 
       <CampaignStatsBar stats={stats} />
+
+      <SenderBreakdown activity={senderActivity} />
 
       <ScheduleEditor
         campaignId={campaignId}

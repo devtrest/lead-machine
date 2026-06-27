@@ -208,6 +208,93 @@ export default async function CampaignDetailPage({
     dailyLimit: (campaign.daily_limit as number) ?? 50,
   };
 
+  // ---- Per-sender activity: how many emails each mailbox sent for this
+  // campaign, to whom, opens, and replies. Wrapped defensively: if the
+  // email_sends.sender_id migration hasn't been applied yet the select errors
+  // and we just render no breakdown instead of crashing the page. -----------
+  type SenderActivity = {
+    senderId: string | null;
+    label: string;
+    email: string | null;
+    sent: number;
+    opened: number;
+    replied: number;
+    recipients: string[];
+  };
+  let senderActivity: SenderActivity[] = [];
+  {
+    const [bySendRes, byReplyRes, allSendersRes] = await Promise.all([
+      supabase
+        .from("email_sends")
+        .select("sender_id,status,first_opened_at,recipient_email")
+        .eq("campaign_id", id),
+      supabase
+        .from("outreach_replies")
+        .select("sender_id")
+        .eq("campaign_id", id),
+      supabase
+        .from("outreach_senders")
+        .select("id,email,display_name")
+        .eq("user_id", user.id),
+    ]);
+
+    if (!bySendRes.error) {
+      const nameById = new Map(
+        (allSendersRes.data ?? []).map((s) => [
+          s.id as string,
+          {
+            email: s.email as string,
+            display_name: (s.display_name as string | null) ?? null,
+          },
+        ])
+      );
+      const agg = new Map<
+        string,
+        { sent: number; opened: number; replied: number; recipients: Set<string> }
+      >();
+      const keyOf = (sid: string | null) => sid ?? "__none__";
+      const ensure = (sid: string | null) => {
+        const k = keyOf(sid);
+        let v = agg.get(k);
+        if (!v) {
+          v = { sent: 0, opened: 0, replied: 0, recipients: new Set() };
+          agg.set(k, v);
+        }
+        return v;
+      };
+      for (const row of bySendRes.data ?? []) {
+        const sid = (row.sender_id as string | null) ?? null;
+        if (row.status !== "sent") continue;
+        const v = ensure(sid);
+        v.sent += 1;
+        if (row.first_opened_at) v.opened += 1;
+        const rcpt = row.recipient_email as string | null;
+        if (rcpt) v.recipients.add(rcpt);
+      }
+      if (!byReplyRes.error) {
+        for (const row of byReplyRes.data ?? []) {
+          const sid = (row.sender_id as string | null) ?? null;
+          ensure(sid).replied += 1;
+        }
+      }
+      senderActivity = Array.from(agg.entries())
+        .map(([k, v]) => {
+          const sid = k === "__none__" ? null : k;
+          const meta = sid ? nameById.get(sid) : null;
+          return {
+            senderId: sid,
+            label: meta?.display_name || meta?.email || "Unknown sender",
+            email: meta?.email ?? null,
+            sent: v.sent,
+            opened: v.opened,
+            replied: v.replied,
+            recipients: Array.from(v.recipients),
+          };
+        })
+        .sort((a, b) => b.sent - a.sent);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -263,6 +350,7 @@ export default async function CampaignDetailPage({
         prospects={prospects}
         candidateLeads={candidateLeads}
         stats={stats}
+        senderActivity={senderActivity}
         senders={
           (sendersRes.data ?? []).map((s) => ({
             id: s.id as string,

@@ -475,11 +475,12 @@ async function tick(opts: TickOpts = {}): Promise<TickResult> {
         })
         .eq("id", p.id);
 
-      await supabase.from("email_sends").insert({
+      await insertEmailSend({
         user_id: campaign.user_id,
         lead_id: p.lead_id,
         scan_run_id: null,
         campaign_id: campaign.id,
+        sender_id: pickedSender?.id ?? null,
         step_order: nextStepOrder,
         recipient_email: p.email,
         subject: renderedSubject,
@@ -533,11 +534,12 @@ async function tick(opts: TickOpts = {}): Promise<TickResult> {
           .eq("id", p.id);
       }
 
-      await supabase.from("email_sends").insert({
+      await insertEmailSend({
         user_id: campaign.user_id,
         lead_id: p.lead_id,
         scan_run_id: null,
         campaign_id: campaign.id,
+        sender_id: pickedSender?.id ?? null,
         step_order: nextStepOrder,
         recipient_email: p.email,
         subject: renderedSubject,
@@ -560,6 +562,30 @@ async function tick(opts: TickOpts = {}): Promise<TickResult> {
     failed,
     skipped: skippedOutOfWindow,
   };
+}
+
+// Insert an email_sends row, tolerating a DB that hasn't run the sender_id
+// migration yet. If the column is missing, Postgres errors on the unknown
+// column; we strip sender_id and retry so sending never breaks on deploy
+// ordering (worker code can ship before the migration is applied).
+async function insertEmailSend(
+  row: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase.from("email_sends").insert(row);
+  if (!error) return;
+  if (/sender_id/i.test(error.message)) {
+    const { sender_id: _omit, ...rest } = row;
+    void _omit;
+    const retry = await supabase.from("email_sends").insert(rest);
+    if (retry.error) {
+      console.error(
+        "[outreach-tick] email_sends insert failed (post-retry):",
+        retry.error.message
+      );
+    }
+    return;
+  }
+  console.error("[outreach-tick] email_sends insert failed:", error.message);
 }
 
 async function sweepCompletedCampaigns(campaignIds: string[]): Promise<void> {
