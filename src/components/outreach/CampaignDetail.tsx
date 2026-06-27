@@ -190,6 +190,7 @@ export function CampaignDetail({
     ) {
       return;
     }
+    setActionError(null);
     setBusy(true);
     const res = await fetch(`/api/outreach/campaigns/${campaignId}`, {
       method: "DELETE",
@@ -198,7 +199,10 @@ export function CampaignDetail({
     if (res.ok) {
       router.replace("/user/outreach");
       router.refresh();
+      return;
     }
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    setActionError(j.error ?? "Couldn't delete campaign.");
   }
 
   const sequenceLocked = status === "active";

@@ -123,12 +123,29 @@ export async function DELETE(_req: Request, ctx: { params: Params }) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { error } = await supabase
+  const { data: deleted, error } = await supabase
     .from("outreach_campaigns")
     .delete()
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    // Surface the real reason (e.g. a foreign-key constraint that doesn't
+    // cascade) instead of failing silently.
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  // A delete that matches no rows (blocked by RLS, or already gone) returns
+  // success with an empty set — treat that as an explicit failure so the UI
+  // doesn't pretend it worked.
+  if (!deleted || deleted.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Campaign wasn't deleted — it may already be gone, or your account doesn't have delete permission. Re-run the outreach RLS migration if this persists.",
+      },
+      { status: 404 }
+    );
+  }
   return NextResponse.json({ ok: true });
 }
