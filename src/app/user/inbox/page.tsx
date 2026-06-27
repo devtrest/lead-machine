@@ -4,6 +4,7 @@ import { InboxCheckButton } from "@/components/outreach/InboxCheckButton";
 import {
   InboxWorkspace,
   type SenderContact,
+  type SentMessage,
 } from "@/components/outreach/InboxWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -124,11 +125,15 @@ export default async function InboxPage() {
   // email_sends.sender_id migration isn't applied, the select errors and we
   // fall back to reply-only activity (sent counts show 0). -----------------
   const activityBySender: Record<string, SenderContact[]> = {};
+  const sentBySender: Record<string, SentMessage[]> = {};
   {
     const sendsActivityRes = await supabase
       .from("email_sends")
-      .select("sender_id,recipient_email,status,first_opened_at,leads(name)")
+      .select(
+        "id,sender_id,recipient_email,status,first_opened_at,subject,body,sent_at,leads(name)"
+      )
       .eq("user_id", user!.id)
+      .order("sent_at", { ascending: false })
       .limit(5000);
 
     const bySender = new Map<string, Map<string, SenderContact>>();
@@ -155,12 +160,25 @@ export default async function InboxPage() {
         const rcpt = row.recipient_email as string | null;
         if (!rcpt) continue;
         const lead = Array.isArray(row.leads) ? row.leads[0] ?? null : row.leads;
+        const leadName =
+          lead && (lead as { name?: string }).name
+            ? (lead as { name: string }).name
+            : null;
         const c = ensure(sid, rcpt);
         c.sent += 1;
         if (row.first_opened_at) c.opened += 1;
-        if (!c.name && lead && (lead as { name?: string }).name) {
-          c.name = (lead as { name: string }).name;
-        }
+        if (!c.name && leadName) c.name = leadName;
+
+        // Sent-folder message (Gmail-style list).
+        (sentBySender[sid] ??= []).push({
+          id: row.id as string,
+          to: rcpt,
+          toName: leadName,
+          subject: (row.subject as string | null) ?? "(no subject)",
+          body: (row.body as string | null) ?? "",
+          sentAt: (row.sent_at as string | null) ?? null,
+          opened: Boolean(row.first_opened_at),
+        });
       }
     }
     // Merge reply state in (also surfaces prospects whose only record is a reply).
@@ -178,9 +196,9 @@ export default async function InboxPage() {
     }
   }
 
-  const sentBySender = new Map<string, number>();
+  const sentCountBySender = new Map<string, number>();
   for (const [sid, contacts] of Object.entries(activityBySender)) {
-    sentBySender.set(
+    sentCountBySender.set(
       sid,
       contacts.reduce((n, c) => n + c.sent, 0)
     );
@@ -202,7 +220,7 @@ export default async function InboxPage() {
     lastCheckedAt: s.last_inbox_check_at,
     lastError: s.last_error,
     replyCount: repliesBySender.get(s.id) ?? 0,
-    sentCount: sentBySender.get(s.id) ?? 0,
+    sentCount: sentCountBySender.get(s.id) ?? 0,
   }));
 
   return (
@@ -241,6 +259,7 @@ export default async function InboxPage() {
         replies={replies}
         senders={senders}
         activityBySender={activityBySender}
+        sentBySender={sentBySender}
       />
     </div>
   );
