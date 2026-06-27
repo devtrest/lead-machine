@@ -77,13 +77,26 @@ export async function DELETE(_req: Request, ctx: { params: Params }) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { error } = await supabase
+  const { data: deleted, error } = await supabase
     .from("scan_runs")
     .delete()
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  // A delete blocked by RLS (e.g. missing delete policy) returns success with
+  // zero rows. Report that as an explicit failure so the UI stops claiming the
+  // scrape was deleted when it wasn't.
+  if (!deleted || deleted.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Scrape wasn't deleted — it may already be gone, or your account is missing delete permission. Run the scan_runs delete-policy migration if this persists.",
+      },
+      { status: 404 }
+    );
   }
 
   return NextResponse.json({ ok: true });
