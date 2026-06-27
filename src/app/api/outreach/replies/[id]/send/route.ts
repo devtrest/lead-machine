@@ -38,7 +38,7 @@ export async function POST(req: Request, ctx: { params: Params }) {
   const { data: reply } = await supabase
     .from("outreach_replies")
     .select(
-      "id,from_email,from_name,subject,message_id,sender_id,campaign_id,lead_id,prospect_id,outreach_senders(id,email,display_name,app_password,status)"
+      "id,from_email,from_name,subject,message_id,sender_id,campaign_id,lead_id,prospect_id,outreach_senders(id,email,display_name,app_password,status,provider,smtp_host,smtp_port,smtp_secure)"
     )
     .eq("id", id)
     .eq("user_id", user.id)
@@ -54,6 +54,10 @@ export async function POST(req: Request, ctx: { params: Params }) {
     display_name: string | null;
     app_password: string;
     status: string;
+    provider: string | null;
+    smtp_host: string | null;
+    smtp_port: number | null;
+    smtp_secure: boolean | null;
   };
   const sender = (Array.isArray(reply.outreach_senders)
     ? reply.outreach_senders[0]
@@ -72,18 +76,31 @@ export async function POST(req: Request, ctx: { params: Params }) {
     );
   }
 
-  // Same hardened SMTP config as the worker tick + test-send.
+  // Use the sender's OWN stored SMTP config — NOT a hardcoded Gmail host.
+  // Custom-domain / Outlook / Titan senders have their own host:port, and
+  // pinning to smtp.gmail.com here would fail auth for every non-Gmail
+  // mailbox. Fall back to Gmail defaults only if the columns are somehow
+  // empty (legacy rows predating multi-provider senders).
+  const provider = sender.provider ?? "gmail";
+  const smtpHost = sender.smtp_host || "smtp.gmail.com";
+  const smtpPort = sender.smtp_port && sender.smtp_port > 0 ? sender.smtp_port : 587;
+  const smtpSecure = sender.smtp_secure ?? false;
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
+    requireTLS: !smtpSecure,
     connectionTimeout: 25_000,
     greetingTimeout: 15_000,
     socketTimeout: 30_000,
     auth: {
       user: sender.email,
-      pass: sender.app_password.replace(/\s+/g, ""),
+      // Gmail app passwords are stored/displayed with spaces; strip them.
+      // Other providers may have meaningful whitespace — leave those alone.
+      pass:
+        provider === "gmail"
+          ? sender.app_password.replace(/\s+/g, "")
+          : sender.app_password,
     },
   });
 
@@ -114,12 +131,15 @@ export async function POST(req: Request, ctx: { params: Params }) {
     });
 
     // Log the outgoing reply to email_sends so future replies can match
-    // against this address.
-    await supabase.from("email_sends").insert({
+    // against this address. Includes sender_id for per-sender attribution;
+    // strips it and retries if the migration hasn't been applied yet so the
+    // reply still succeeds on an un-migrated DB.
+    const sendRow = {
       user_id: user.id,
       lead_id: reply.lead_id ?? null,
       scan_run_id: null,
       campaign_id: reply.campaign_id ?? null,
+      sender_id: sender.id,
       step_order: 0,
       recipient_email: reply.from_email,
       subject,
@@ -128,7 +148,13 @@ export async function POST(req: Request, ctx: { params: Params }) {
       provider_message_id: info.messageId ?? null,
       attachment_count: 0,
       sent_at: new Date().toISOString(),
-    });
+    };
+    const logRes = await supabase.from("email_sends").insert(sendRow);
+    if (logRes.error && /sender_id/i.test(logRes.error.message)) {
+      const { sender_id: _omit, ...rest } = sendRow;
+      void _omit;
+      await supabase.from("email_sends").insert(rest);
+    }
 
     // Auto-mark the incoming reply as read since the user has now responded.
     await supabase

@@ -58,11 +58,26 @@ export default async function InboxPage() {
   const repliesRaw = repliesRes.data;
   const sendersRaw = sendersRes.data ?? [];
 
+  // Map sender_id → which of the user's connected mailboxes it is, so each
+  // reply can show "received by / reply as <that mailbox>". Essential with
+  // round-robin: the user needs to know which inbox a conversation lives in.
+  const senderMetaById = new Map(
+    (sendersRaw as {
+      id: string;
+      email: string;
+      display_name: string | null;
+    }[]).map((s) => [
+      s.id,
+      { email: s.email, displayName: s.display_name },
+    ])
+  );
+
   const replies = ((repliesRaw ?? []) as (ReplyRow & { sender_id: string | null })[]).map((r) => {
     const campaign = Array.isArray(r.outreach_campaigns)
       ? r.outreach_campaigns[0] ?? null
       : r.outreach_campaigns;
     const lead = Array.isArray(r.leads) ? r.leads[0] ?? null : r.leads;
+    const senderMeta = r.sender_id ? senderMetaById.get(r.sender_id) : null;
     return {
       id: r.id,
       fromEmail: r.from_email,
@@ -77,6 +92,8 @@ export default async function InboxPage() {
       leadName: lead?.name ?? null,
       leadCategory: lead?.category ?? null,
       senderId: r.sender_id ?? null,
+      senderEmail: senderMeta?.email ?? null,
+      senderName: senderMeta?.displayName ?? null,
       starred: Boolean(r.starred),
       category: r.category,
       archivedAt: r.archived_at,

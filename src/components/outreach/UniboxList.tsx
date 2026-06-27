@@ -36,6 +36,8 @@ export type UniboxReply = {
   leadName: string | null;
   leadCategory: string | null;
   senderId: string | null;
+  senderEmail: string | null;
+  senderName: string | null;
   starred: boolean;
   category: string | null;
   archivedAt: string | null;
@@ -282,6 +284,8 @@ export function UniboxList({ replies }: { replies: UniboxReply[] }) {
               <ReplyComposer
                 replyId={selected.id}
                 senderConnected={Boolean(selected.senderId)}
+                senderEmail={selected.senderEmail}
+                senderName={selected.senderName}
                 onSent={() => {
                   toast.success("Reply sent", `→ ${selected.fromEmail}`);
                   router.refresh();
@@ -383,7 +387,7 @@ function UniboxRow({
           </div>
 
           {/* Tag chips only if present */}
-          {(catMeta || reply.campaignName) ? (
+          {(catMeta || reply.campaignName || reply.senderEmail) ? (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
               {catMeta ? (
                 <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--ink-strong)]">
@@ -393,6 +397,15 @@ function UniboxRow({
               {reply.campaignName ? (
                 <span className="inline-flex items-center gap-1 rounded-md bg-[var(--brand-50)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
                   {reply.campaignName}
+                </span>
+              ) : null}
+              {reply.senderEmail ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--ink-muted)]"
+                  title={`Received by ${reply.senderEmail}`}
+                >
+                  <InboxIcon className="h-2.5 w-2.5" />
+                  {reply.senderName || reply.senderEmail.split("@")[0]}
                 </span>
               ) : null}
             </div>
@@ -476,6 +489,21 @@ function ReplyDetail({
             })}
           </span>
         </div>
+
+        {/* Which of the user's mailboxes received this — critical with
+            round-robin so they know the conversation's home inbox. */}
+        {reply.senderEmail ? (
+          <div className="inline-flex items-center gap-1.5 text-[12px] text-[var(--ink-muted)]">
+            <InboxIcon className="h-3.5 w-3.5 text-[var(--ink-subtle)]" />
+            Received by{" "}
+            <span className="font-semibold text-[var(--ink-strong)]">
+              {reply.senderName || reply.senderEmail.split("@")[0]}
+            </span>
+            <span className="text-[var(--ink-subtle)]">
+              &lt;{reply.senderEmail}&gt;
+            </span>
+          </div>
+        ) : null}
 
         {/* Campaign / lead pills row — only when present */}
         {(reply.campaignName || reply.leadName) ? (
@@ -571,10 +599,14 @@ function ReplyDetail({
 function ReplyComposer({
   replyId,
   senderConnected,
+  senderEmail,
+  senderName,
   onSent,
 }: {
   replyId: string;
   senderConnected: boolean;
+  senderEmail: string | null;
+  senderName: string | null;
   onSent: () => void;
 }) {
   const [body, setBody] = useState("");
@@ -610,9 +642,19 @@ function ReplyComposer({
           <ReplyIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
           Reply
         </h3>
-        <span className="text-[10px] uppercase tracking-wider text-[var(--ink-subtle)]">
-          Sends from the same Gmail
-        </span>
+        {senderConnected && senderEmail ? (
+          <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ink-subtle)]">
+            Reply as{" "}
+            <span className="font-semibold text-[var(--ink-strong)]">
+              {senderName || senderEmail.split("@")[0]}
+            </span>
+            <span className="hidden sm:inline">&lt;{senderEmail}&gt;</span>
+          </span>
+        ) : (
+          <span className="text-[10px] uppercase tracking-wider text-[var(--ink-subtle)]">
+            Sends from the receiving mailbox
+          </span>
+        )}
       </div>
 
       {!senderConnected ? (
