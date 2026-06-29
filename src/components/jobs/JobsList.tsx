@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
-  Clock,
   RefreshCw,
   Sparkles,
   Radar,
@@ -102,7 +101,7 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
 
       {running.length > 0 ? (
         <Section title="Running now" count={running.length} accent>
-          <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
             <AnimatePresence initial={false}>
               {running.map((run) => (
                 <RunCard key={run.id} run={run} variant="running" />
@@ -119,7 +118,7 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
         {finished.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
             {finished.map((run) => (
               <RunCard
                 key={run.id}
@@ -331,60 +330,49 @@ function RunCard({
       {/* Left accent stripe */}
       <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${accentStripe}`} />
 
-      <div className="p-5 pl-6">
-        {/* Top row: identity + actions */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3.5">
-            <div
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconTile}`}
-            >
-              {variant === "running" ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : variant === "completed" ? (
-                <Play
-                  className="h-4 w-4 translate-x-[1px]"
-                  fill="currentColor"
-                  strokeWidth={0}
-                />
-              ) : (
-                <XCircle className="h-5 w-5" />
-              )}
+      <div className="p-4 pl-5">
+        {/* Identity */}
+        <div className="flex min-w-0 items-start gap-3">
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconTile}`}
+          >
+            {variant === "running" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : variant === "completed" ? (
+              <Play
+                className="h-3.5 w-3.5 translate-x-[1px]"
+                fill="currentColor"
+                strokeWidth={0}
+              />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-sm font-semibold capitalize text-[var(--ink-strong)]">
+                {run.keyword}
+              </h3>
+              <StatusPill variant={phaseVariant} />
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-base font-semibold capitalize text-[var(--ink-strong)]">
-                  {run.keyword}
-                </h3>
-                <StatusPill variant={phaseVariant} />
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[var(--ink-muted)]">
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3 w-3 shrink-0 text-[var(--ink-subtle)]" />
-                  <span className="capitalize">{run.location}</span>
-                </span>
-                <span className="text-[var(--ink-subtle)]">·</span>
-                <span className="inline-flex items-center gap-1 text-[var(--ink-subtle)]">
-                  <Clock className="h-3 w-3" />
-                  {variant === "running"
-                    ? `${formatDuration(elapsedMs)} elapsed`
-                    : formatDuration(elapsedMs)}
-                </span>
-                <span className="text-[var(--ink-subtle)]">·</span>
-                <span className="text-[var(--ink-subtle)]">
-                  Started {formatTimestamp(run.started_at)}
-                </span>
-              </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--ink-muted)]">
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="h-2.5 w-2.5 shrink-0 text-[var(--ink-subtle)]" />
+                <span className="truncate capitalize">{run.location}</span>
+              </span>
+              <span className="text-[var(--ink-subtle)]">·</span>
+              <span className="text-[var(--ink-subtle)]">
+                {formatDuration(elapsedMs)}
+              </span>
             </div>
           </div>
-
-          <RunCardActions run={run} variant={variant} />
         </div>
 
-        {/* Progress footer — spans the full card width */}
-        <div className="mt-4 space-y-2">
+        {/* Progress */}
+        <div className="mt-3 space-y-1.5">
           <div className="flex items-baseline justify-between gap-2">
-            <div className="text-sm">
-              <span className="text-lg font-bold tabular-nums text-[var(--ink-strong)]">
+            <div className="text-xs">
+              <span className="text-base font-bold tabular-nums text-[var(--ink-strong)]">
                 {run.result_count.toLocaleString()}
               </span>
               <span className="text-[var(--ink-muted)]">
@@ -393,7 +381,7 @@ function RunCard({
               </span>
             </div>
             <span
-              className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
+              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
                 variant === "failed"
                   ? "bg-[var(--danger-50)] text-[var(--danger-700)]"
                   : variant === "completed"
@@ -405,6 +393,11 @@ function RunCard({
             </span>
           </div>
           <ProgressBar pct={pct} variant={variant} />
+        </div>
+
+        {/* Actions */}
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--border)]/60 pt-3">
+          <RunCardActions run={run} variant={variant} />
         </div>
       </div>
 
@@ -513,7 +506,7 @@ function RunCardActions({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
+    <div className="flex w-full items-center gap-2">
       {variant !== "failed" && run.result_count > 0 ? (
         <Link
           href={`/user/leads?campaign=${run.id}`}
@@ -524,7 +517,7 @@ function RunCardActions({
         </Link>
       ) : null}
 
-      <div className="flex items-center gap-1">
+      <div className="ml-auto flex items-center gap-1">
         {variant === "running" ? (
           <button
             type="button"
@@ -636,20 +629,6 @@ function formatDuration(ms: number): string {
   if (m < 60) return `${m}m ${rem}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
-}
-
-function formatTimestamp(iso: string): string {
-  const d = new Date(iso);
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) {
-    return `today ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-  }
-  const yest = new Date();
-  yest.setDate(yest.getDate() - 1);
-  if (d.toDateString() === yest.toDateString()) {
-    return `yesterday ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-  }
-  return d.toLocaleDateString();
 }
 
 function shortAgo(ts: number): string {
