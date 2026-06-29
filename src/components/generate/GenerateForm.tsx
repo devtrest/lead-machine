@@ -228,18 +228,29 @@ export function GenerateForm() {
       setStage({ kind: "idle" });
       router.refresh();
 
-      // Auto-scroll DOWN to the campaigns list so the user sees their new
-      // run actually populating instead of staring at the empty form again.
-      // 250ms delay lets router.refresh() reflow the page first; otherwise
-      // we measure the old layout and land at the wrong offset.
-      setTimeout(() => {
+      // Auto-scroll DOWN to the campaigns list so the user sees their new run
+      // populating instead of staring at the empty form again. We retry a few
+      // times because router.refresh() is async — the new "Running now" section
+      // may not be in the DOM for a few hundred ms. Falls back to the stable
+      // #campaigns container, which always exists.
+      let attempts = 0;
+      const scrollToCampaigns = () => {
+        attempts += 1;
         const target =
           document.getElementById("running-now") ??
-          document.getElementById("recent-history");
+          document.getElementById("campaigns");
         if (target) {
           target.scrollIntoView({ behavior: "smooth", block: "start" });
+          // Keep retrying until the live "Running now" section shows up, so we
+          // land precisely on the active run rather than the list top.
+          if (!document.getElementById("running-now") && attempts < 6) {
+            setTimeout(scrollToCampaigns, 500);
+          }
+        } else if (attempts < 6) {
+          setTimeout(scrollToCampaigns, 500);
         }
-      }, 250);
+      };
+      setTimeout(scrollToCampaigns, 300);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setStage({

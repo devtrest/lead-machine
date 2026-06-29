@@ -88,7 +88,9 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
   const completedCount = runs.filter((r) => r.status === "completed").length;
 
   return (
-    <div className="space-y-8">
+    // Stable anchor the GenerateForm scrolls to after a campaign starts — it
+    // always exists, unlike the per-state Running/Recent section ids.
+    <div id="campaigns" className="scroll-mt-24 space-y-8">
       <StatsRow
         running={running.length}
         completed={completedCount}
