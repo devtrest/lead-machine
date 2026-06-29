@@ -40,6 +40,14 @@ const HARVEST_CONCURRENCY = 6;
 // also wait briefly for a render slot. 50s covers HTTP walk + queue + render.
 const PER_LEAD_BUDGET_MS = 50_000;
 
+// Layer 2 (headless Chromium) is what makes re-enrich worth running — it cracks
+// JS-rendered contact pages the HTTP pass can't. But it needs ~1GB RAM, and on
+// a memory-constrained worker a bulk re-enrich can OOM-restart the process mid
+// crawl (symptom: progress frozen at 0, client stuck "Scraping…"). Set
+// REENRICH_USE_BROWSER=0 to fall back to HTTP-only (reliable, lower yield) if
+// that's happening. Defaults to ON.
+const REENRICH_USE_BROWSER = process.env.REENRICH_USE_BROWSER !== "0";
+
 export async function runReenrich(
   scanRunId: string,
   userId: string,
@@ -130,7 +138,7 @@ export async function runReenrich(
 
         try {
           const enriched = await Promise.race([
-            enrichFromWebsite(websiteUrl, 3, { useBrowser: true }),
+            enrichFromWebsite(websiteUrl, 3, { useBrowser: REENRICH_USE_BROWSER }),
             new Promise<never>((_, reject) =>
               setTimeout(
                 () => reject(new Error("re-enrich deadline")),

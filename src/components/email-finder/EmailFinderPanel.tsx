@@ -203,6 +203,13 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
   // which list is scraping in localStorage and re-attach to its live progress
   // when the panel mounts again.
   const mountedRef = useRef(true);
+  // Stall detection for the reconnect loop: if we keep reconnecting but the
+  // job's progress never advances (e.g. the worker OOM-restarted mid-crawl and
+  // the job is dead), give up instead of spinning "Scraping…" forever.
+  const seenDoneRef = useRef(0);
+  const stallReconnectsRef = useRef(0);
+  const lastReconnectDoneRef = useRef(0);
+  const MAX_STALLED_RECONNECTS = 4;
   const ACTIVE_KEY = `lm_scrape_active_${list.id}`;
   const ACTIVE_TTL_MS = 30 * 60 * 1000;
   const markActive = () => {
@@ -279,6 +286,9 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
       setFound(0);
       setFeed([]);
       setProg({ done: 0, total: list.missing });
+      seenDoneRef.current = 0;
+      stallReconnectsRef.current = 0;
+      lastReconnectDoneRef.current = 0;
     }
     markActive();
 
@@ -338,6 +348,7 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
           if (evt.phase === "progress") {
             setProg({ done: evt.done ?? 0, total: evt.total ?? list.missing });
             setFound(evt.newEmails ?? 0);
+            seenDoneRef.current = Math.max(seenDoneRef.current, evt.done ?? 0);
             if (evt.url) {
               const url = evt.url;
               const email = evt.email ?? null;
@@ -396,10 +407,31 @@ function ListTile({ list, index }: { list: FinderList; index: number }) {
       return;
     }
 
-    // Stream ended with no terminal frame → the proxy timed out but the job is
-    // still running on the worker. Reconnect (if still mounted) to keep the
-    // progress live; otherwise leave the flag so a later mount re-attaches.
+    // Stream ended with no terminal frame → the proxy timed out but the job
+    // *may* still be running on the worker. Reconnect to keep progress live —
+    // BUT only while progress is actually advancing. If several reconnects in a
+    // row see no new progress, the worker job is dead (likely an OOM restart),
+    // so stop and surface a real error instead of spinning forever.
     if (mountedRef.current && isActive()) {
+      if (seenDoneRef.current > lastReconnectDoneRef.current) {
+        // Progress moved since the last reconnect — healthy, keep going.
+        lastReconnectDoneRef.current = seenDoneRef.current;
+        stallReconnectsRef.current = 0;
+      } else {
+        stallReconnectsRef.current += 1;
+      }
+
+      if (stallReconnectsRef.current >= MAX_STALLED_RECONNECTS) {
+        clearActive();
+        toast.error(
+          "Email crawl stalled",
+          "The crawler kept dropping with no progress — the email worker may be overloaded or restarting. Please try again in a few minutes."
+        );
+        setProg(null);
+        setBusy(false);
+        return;
+      }
+
       setTimeout(() => {
         if (mountedRef.current) void runStream(true);
       }, 800);
