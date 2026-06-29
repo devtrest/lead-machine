@@ -101,7 +101,7 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
 
       {running.length > 0 ? (
         <Section title="Running now" count={running.length} accent>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <AnimatePresence initial={false}>
               {running.map((run) => (
                 <RunCard key={run.id} run={run} variant="running" />
@@ -118,7 +118,7 @@ export function JobsList({ initialRuns }: { initialRuns: JobRun[] }) {
         {finished.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {finished.map((run) => (
               <RunCard
                 key={run.id}
