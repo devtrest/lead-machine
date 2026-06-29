@@ -16,6 +16,7 @@ import {
   Play,
   StopCircle,
   Trash2,
+  MapPin,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
@@ -307,6 +308,14 @@ function RunCard({
         ? "bg-[var(--success-50)] text-[var(--success-700)] ring-1 ring-[var(--success-100)]"
         : "bg-[var(--danger-50)] text-[var(--danger-700)] ring-1 ring-[var(--danger-100)]";
 
+  // State-colored left accent stripe — gives the list a quick scannable rhythm.
+  const accentStripe =
+    variant === "running"
+      ? "bg-[var(--brand-500)]"
+      : variant === "completed"
+        ? "bg-[var(--success-500)]"
+        : "bg-[var(--danger-500)]";
+
   const cardRing =
     variant === "running" ? "ring-1 ring-[var(--brand-100)]" : "";
 
@@ -317,14 +326,17 @@ function RunCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className={`surface-card relative overflow-hidden ${cardRing}`}
+      className={`group surface-card relative overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] ${cardRing}`}
     >
-      <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center">
+      {/* Left accent stripe */}
+      <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${accentStripe}`} />
+
+      <div className="grid gap-4 p-5 pl-6 md:grid-cols-[1fr_auto] md:items-center">
         {/* Left: icon + identity + progress */}
-        <div className="space-y-3">
-          <div className="flex items-start gap-3">
+        <div className="space-y-3.5">
+          <div className="flex items-start gap-3.5">
             <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${iconTile}`}
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconTile}`}
             >
               {variant === "running" ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -345,10 +357,11 @@ function RunCard({
                 </h3>
                 <StatusPill variant={phaseVariant} />
               </div>
-              <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
-                {run.location}
+              <p className="mt-1 inline-flex items-center gap-1 truncate text-xs text-[var(--ink-muted)]">
+                <MapPin className="h-3 w-3 shrink-0 text-[var(--ink-subtle)]" />
+                <span className="truncate capitalize">{run.location}</span>
               </p>
-              <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-[var(--ink-subtle)]">
+              <div className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-[var(--ink-subtle)]">
                 <Clock className="h-2.5 w-2.5" />
                 {variant === "running"
                   ? `${formatDuration(elapsedMs)} elapsed`
@@ -371,15 +384,17 @@ function RunCard({
                   / {run.limit_count.toLocaleString()} leads
                 </span>
               </div>
-              <div
-                className={`text-sm font-bold tabular-nums ${
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
                   variant === "failed"
-                    ? "text-[var(--danger-700)]"
-                    : "text-[var(--brand-700)]"
+                    ? "bg-[var(--danger-50)] text-[var(--danger-700)]"
+                    : variant === "completed"
+                      ? "bg-[var(--success-50)] text-[var(--success-700)]"
+                      : "bg-[var(--brand-50)] text-[var(--brand-700)]"
                 }`}
               >
                 {pct}%
-              </div>
+              </span>
             </div>
             <ProgressBar pct={pct} variant={variant} />
           </div>
