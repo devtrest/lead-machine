@@ -331,10 +331,10 @@ function RunCard({
       {/* Left accent stripe */}
       <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${accentStripe}`} />
 
-      <div className="grid gap-4 p-5 pl-6 md:grid-cols-[1fr_auto] md:items-center">
-        {/* Left: icon + identity + progress */}
-        <div className="space-y-3.5">
-          <div className="flex items-start gap-3.5">
+      <div className="p-5 pl-6">
+        {/* Top row: identity + actions */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3.5">
             <div
               className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconTile}`}
             >
@@ -357,51 +357,55 @@ function RunCard({
                 </h3>
                 <StatusPill variant={phaseVariant} />
               </div>
-              <p className="mt-1 inline-flex items-center gap-1 truncate text-xs text-[var(--ink-muted)]">
-                <MapPin className="h-3 w-3 shrink-0 text-[var(--ink-subtle)]" />
-                <span className="truncate capitalize">{run.location}</span>
-              </p>
-              <div className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-[var(--ink-subtle)]">
-                <Clock className="h-2.5 w-2.5" />
-                {variant === "running"
-                  ? `${formatDuration(elapsedMs)} elapsed`
-                  : formatDuration(elapsedMs)}
-                <span>·</span>
-                <span>Started {formatTimestamp(run.started_at)}</span>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[var(--ink-muted)]">
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="h-3 w-3 shrink-0 text-[var(--ink-subtle)]" />
+                  <span className="capitalize">{run.location}</span>
+                </span>
+                <span className="text-[var(--ink-subtle)]">·</span>
+                <span className="inline-flex items-center gap-1 text-[var(--ink-subtle)]">
+                  <Clock className="h-3 w-3" />
+                  {variant === "running"
+                    ? `${formatDuration(elapsedMs)} elapsed`
+                    : formatDuration(elapsedMs)}
+                </span>
+                <span className="text-[var(--ink-subtle)]">·</span>
+                <span className="text-[var(--ink-subtle)]">
+                  Started {formatTimestamp(run.started_at)}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Progress block */}
-          <div className="space-y-1.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <div className="text-sm">
-                <span className="text-lg font-bold tabular-nums text-[var(--ink-strong)]">
-                  {run.result_count.toLocaleString()}
-                </span>
-                <span className="text-[var(--ink-muted)]">
-                  {" "}
-                  / {run.limit_count.toLocaleString()} leads
-                </span>
-              </div>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
-                  variant === "failed"
-                    ? "bg-[var(--danger-50)] text-[var(--danger-700)]"
-                    : variant === "completed"
-                      ? "bg-[var(--success-50)] text-[var(--success-700)]"
-                      : "bg-[var(--brand-50)] text-[var(--brand-700)]"
-                }`}
-              >
-                {pct}%
-              </span>
-            </div>
-            <ProgressBar pct={pct} variant={variant} />
-          </div>
+          <RunCardActions run={run} variant={variant} />
         </div>
 
-        {/* Right: actions */}
-        <RunCardActions run={run} variant={variant} />
+        {/* Progress footer — spans the full card width */}
+        <div className="mt-4 space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="text-sm">
+              <span className="text-lg font-bold tabular-nums text-[var(--ink-strong)]">
+                {run.result_count.toLocaleString()}
+              </span>
+              <span className="text-[var(--ink-muted)]">
+                {" "}
+                / {run.limit_count.toLocaleString()} leads
+              </span>
+            </div>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
+                variant === "failed"
+                  ? "bg-[var(--danger-50)] text-[var(--danger-700)]"
+                  : variant === "completed"
+                    ? "bg-[var(--success-50)] text-[var(--success-700)]"
+                    : "bg-[var(--brand-50)] text-[var(--brand-700)]"
+              }`}
+            >
+              {pct}%
+            </span>
+          </div>
+          <ProgressBar pct={pct} variant={variant} />
+        </div>
       </div>
 
       {run.error ? (
@@ -509,7 +513,7 @@ function RunCardActions({
   }
 
   return (
-    <div className="flex shrink-0 items-center justify-end gap-1.5 md:flex-col md:items-end">
+    <div className="flex shrink-0 items-center gap-1.5">
       {variant !== "failed" && run.result_count > 0 ? (
         <Link
           href={`/user/leads?campaign=${run.id}`}
