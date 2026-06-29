@@ -307,14 +307,6 @@ function RunCard({
         ? "bg-[var(--success-50)] text-[var(--success-700)] ring-1 ring-[var(--success-100)]"
         : "bg-[var(--danger-50)] text-[var(--danger-700)] ring-1 ring-[var(--danger-100)]";
 
-  // State-colored left accent stripe — gives the list a quick scannable rhythm.
-  const accentStripe =
-    variant === "running"
-      ? "bg-[var(--brand-500)]"
-      : variant === "completed"
-        ? "bg-[var(--success-500)]"
-        : "bg-[var(--danger-500)]";
-
   const cardRing =
     variant === "running" ? "ring-1 ring-[var(--brand-100)]" : "";
 
@@ -327,10 +319,7 @@ function RunCard({
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       className={`group surface-card relative overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] ${cardRing}`}
     >
-      {/* Left accent stripe */}
-      <span aria-hidden className={`absolute inset-y-0 left-0 w-1 ${accentStripe}`} />
-
-      <div className="p-4 pl-5">
+      <div className="p-4">
         {/* Identity */}
         <div className="flex min-w-0 items-start gap-3">
           <div
